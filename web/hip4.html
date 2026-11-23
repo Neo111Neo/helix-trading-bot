@@ -1,0 +1,1174 @@
+<title>HELIX HIP-4 Cortex</title>
+<!--
+  HELIX HIP-4 Cortex - a layered 3D map of Hyperliquid's HIP-4 outcome markets for the HELIX paper engine.
+  Evolved from the HELIX Cortex (web/live.html); its visual techniques (photons along links, hub nodes with rings,
+  radar pings, fresnel shells, neon-on-black palette) are adapted from ATSMATRIX-NEXUS and atsmatrix-agent-visualizeR
+  by anyel1to, (c) 2026 ATSMATRIX Technologies / anyel1to, used under the MIT License (full notice in web/live.html).
+  Every visual is driven by real data: HIP-4 books and trades, the perp prices, our fair curve, the paper market
+  maker's quotes, fills and settlements, and Jev / Claude forecasts. Nothing is simulated.
+
+  Layers:  L1  the universe - every underlying with HIP-4 markets; crypto on the inner orbit, stocks & commodities outer
+           L2  one underlying - a tower of expiry rings (soonest at the bottom)
+           L3  one market - a strike node with its probability gauge: market bid-ask, our fair, the model, Jev, Claude
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #030712; --panel: rgba(10,15,26,.78); --panel-solid: #0a0f1a; --hair: rgba(56,189,248,.14); --hair-2: rgba(56,189,248,.26);
+  --text: #e2e8f0; --text-2: #94a3b8; --muted: #56627a;
+  --cyan: #22d3ee; --blue: #38bdf8; --purple: #a855f7; --indigo: #6366f1; --rose: #f43f5e; --green: #34d399; --amber: #fbbf24; --white: #f8fafc;
+  --up: #34d399; --down: #f43f5e;
+  --sans: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); overflow: hidden; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+a { color: var(--cyan); text-decoration: none; }
+.up { color: var(--up); } .down { color: var(--down); } .t2 { color: var(--text-2); } .muted { color: var(--muted); } .amber { color: var(--amber); } .cyan { color: var(--cyan); } .violet { color: var(--purple); }
+.app { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
+
+/* top bar */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 9px 16px; border-bottom: 1px solid var(--hair); background: linear-gradient(90deg, rgba(34,211,238,.06), transparent 40%, rgba(168,85,247,.06)); }
+.mark { font: 700 14px var(--mono); letter-spacing: 4px; background: linear-gradient(90deg, var(--cyan), var(--purple)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mark span { letter-spacing: 2px; font-weight: 500; }
+.status { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 500 11px var(--mono); color: var(--text-2); }
+.status i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--muted); }
+.status .ok i { background: var(--green); box-shadow: 0 0 8px var(--green); } .status .warn i { background: var(--amber); box-shadow: 0 0 8px var(--amber); } .status .bad i { background: var(--rose); box-shadow: 0 0 8px var(--rose); }
+.grow { flex: 1; }
+.tag { font: 600 10px var(--mono); letter-spacing: 1.5px; color: var(--amber); border: 1px solid rgba(251,191,36,.4); border-radius: 4px; padding: 2px 6px; }
+.clock { font: 500 11px var(--mono); color: var(--text-2); }
+.btn { font: 500 11px var(--mono); color: var(--text-2); text-decoration: none; border: 1px solid var(--hair-2); border-radius: 6px; padding: 4px 9px; background: none; cursor: pointer; display: inline-block; }
+.btn:hover, .btn.on { color: var(--text); border-color: var(--cyan); box-shadow: 0 0 10px rgba(34,211,238,.25); }
+.btn:disabled { opacity: .45; cursor: default; box-shadow: none; }
+
+/* 3D stage + overlays */
+.stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.stage canvas.gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.lbl { pointer-events: auto; cursor: pointer; font: 600 11px var(--mono); color: var(--text); text-align: center; padding: 5px 8px; border-radius: 8px;
+  background: rgba(3,7,18,.55); border: 1px solid rgba(56,189,248,.22); backdrop-filter: blur(6px); white-space: nowrap; transform: translateY(-6px); transition: border-color .3s, box-shadow .3s, opacity .4s; }
+.lbl.sel { border-color: var(--cyan); box-shadow: 0 0 14px rgba(34,211,238,.35); }
+.lbl b { letter-spacing: 1px; } .lbl .px { color: var(--text-2); font-weight: 500; margin-left: 6px; }
+.lbl .sub { font-size: 9.5px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
+.lbl .call { font-size: 10px; margin-top: 3px; color: var(--text-2); }
+.lbl.xp { font-size: 9.5px; padding: 2px 6px; border-radius: 5px; }
+.lbl.nd { font-size: 9.5px; padding: 2px 5px; border-radius: 5px; background: rgba(3,7,18,.7); }
+.lbl.dim { opacity: .0; pointer-events: none; }
+.ov { position: absolute; background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; backdrop-filter: blur(10px); }
+.pipe { left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px 8px; font: 600 10px var(--mono); letter-spacing: 1.2px; max-width: calc(100% - 24px); }
+.pipe span { padding: 3px 9px; border-radius: 6px; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color .25s, background .25s, box-shadow .25s; }
+.pipe span.lit { color: #030712; background: var(--c); box-shadow: 0 0 14px var(--c); }
+.pipe span.off { opacity: .35; cursor: default; }
+.pipe em { color: var(--muted); font-style: normal; align-self: center; }
+.legend { left: 12px; top: 12px; padding: 10px 12px; font: 500 10.5px var(--mono); color: var(--text-2); display: grid; gap: 4px; max-width: 300px; }
+.legend b { font-weight: 600; } .legend .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 8px currentColor; background: currentColor; vertical-align: 0; }
+.legend .grad { display: inline-block; width: 70px; height: 7px; border-radius: 4px; background: linear-gradient(90deg, var(--rose), var(--indigo), var(--green)); vertical-align: 0; margin: 0 4px; }
+.focus { right: 12px; top: 12px; padding: 6px 8px; display: flex; gap: 6px; }
+.log { left: 12px; bottom: 12px; width: min(460px, 46%); padding: 8px 0; font: 11px/1.55 var(--mono); max-height: 170px; overflow: hidden; }
+.log h4, .mini h4 { margin: 0 12px 6px; font: 600 10px var(--mono); letter-spacing: 1.6px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.log .r { padding: 1px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+.log .r .k { display: inline-block; width: 56px; font-weight: 700; } .log .r .tm { color: var(--muted); margin-right: 8px; }
+.mini { right: 12px; bottom: 12px; width: min(470px, 46%); height: 240px; padding: 8px 0 0; display: flex; flex-direction: column; }
+.mini .cv { position: relative; flex: 1; min-height: 0; } .mini canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-2); font: 13px var(--mono); text-align: center; padding: 30px; }
+
+/* side panel */
+.side { border-left: 1px solid var(--hair); overflow: auto; padding-bottom: 16px; background: rgba(5,8,15,.6); }
+.blk { padding: 4px 16px 14px; border-bottom: 1px solid var(--hair); }
+.blk h3 { margin: 12px 0 10px; font: 600 10px var(--mono); letter-spacing: 1.8px; color: var(--muted); text-transform: uppercase; display: flex; justify-content: space-between; gap: 8px; }
+.blk h3 em { font-style: normal; color: var(--text-2); letter-spacing: .5px; text-transform: none; text-align: right; }
+.big { font: 600 24px/1.1 var(--mono); letter-spacing: -.5px; }
+.kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kpi { border: 1px solid var(--hair-2); border-radius: 10px; padding: 8px 10px; background: rgba(255,255,255,.015); min-width: 0; }
+.kpi .l { font: 600 9.5px var(--mono); letter-spacing: 1.3px; color: var(--muted); text-transform: uppercase; }
+.kpi .v { font: 600 17px/1.2 var(--mono); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .s { font: 500 10px var(--mono); color: var(--text-2); margin-top: 2px; }
+.line { font: 500 11.5px var(--mono); color: var(--text-2); margin-top: 8px; }
+.line b { color: var(--text); font-weight: 600; }
+.note { font-size: 11px; color: var(--text-2); margin-top: 8px; line-height: 1.5; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font: 500 11.5px var(--mono); color: var(--text-2); }
+.kv b { color: var(--text); font-weight: 500; text-align: right; }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font: 500 11px var(--mono); }
+th { text-align: right; color: var(--muted); font-weight: 600; font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; padding: 4px 6px; border-bottom: 1px solid var(--hair); white-space: nowrap; }
+td { text-align: right; padding: 4px 6px; border-bottom: 1px solid rgba(56,189,248,.06); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+tr.click { cursor: pointer; } tr.click:hover td { background: rgba(34,211,238,.05); }
+tr.dim td { opacity: .45; } tr.selr td { background: rgba(34,211,238,.07); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font: 500 10.5px var(--mono); color: var(--text-2); border: 1px solid var(--hair); border-radius: 5px; padding: 2px 6px; cursor: pointer; }
+.chip:hover { border-color: var(--cyan); color: var(--text); } .chip.sel { border-color: var(--cyan); color: var(--text); background: rgba(34,211,238,.08); }
+.coinrow { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 7px 10px; border: 1px solid var(--hair); border-radius: 8px; cursor: pointer; margin-bottom: 6px; }
+.coinrow:hover { border-color: var(--cyan); }
+.coinrow .n { font: 700 12px var(--mono); } .coinrow .p { font: 500 12px var(--mono); text-align: right; } .coinrow .s { font: 500 10px var(--mono); color: var(--text-2); grid-column: 1 / -1; }
+.badge { font: 700 9.5px var(--mono); letter-spacing: 1px; padding: 1px 5px; border-radius: 3px; }
+.badge.b { color: var(--up); border: 1px solid rgba(52,211,153,.45); } .badge.s { color: var(--down); border: 1px solid rgba(244,63,94,.45); }
+.form { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }
+.form label { display: grid; gap: 3px; font: 500 10px var(--mono); color: var(--muted); }
+.form input, .form select { font: 500 11.5px var(--mono); background: var(--panel-solid); color: var(--text); border: 1px solid var(--hair-2); border-radius: 6px; padding: 4px 6px; width: 78px; }
+.form select { width: 92px; }
+.prog { height: 4px; background: var(--hair); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+.prog i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--purple)); width: 0; transition: width .3s; }
+.gauge { position: relative; height: 34px; margin: 6px 0 2px; border-radius: 6px; background: linear-gradient(90deg, rgba(244,63,94,.18), rgba(99,102,241,.14), rgba(52,211,153,.18)); border: 1px solid var(--hair); }
+.gauge .band { position: absolute; top: 4px; bottom: 4px; background: rgba(251,191,36,.35); border: 1px solid var(--amber); border-radius: 3px; }
+.gauge .tk { position: absolute; top: 0; bottom: 0; width: 2px; transform: translateX(-1px); }
+.gauge .tk span { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); font: 600 9px var(--mono); white-space: nowrap; }
+.gl-lbls { display: flex; justify-content: space-between; font: 500 9.5px var(--mono); color: var(--muted); }
+.empty { color: var(--muted); font: 500 11px var(--mono); padding: 10px 0; }
+.under { display: none; }
+.glbar { height: 10px; border-radius: 6px; background: rgba(255,255,255,.06); overflow: hidden; border: 1px solid var(--hair); margin-bottom: 10px; }
+.glbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--amber), var(--green)); box-shadow: 0 0 14px rgba(52,211,153,.5); transition: width .8s cubic-bezier(.2,1,.3,1); }
+.gl { display: grid; grid-template-columns: 16px 1fr auto; gap: 2px 8px; align-items: center; font: 500 11px var(--mono); color: var(--text-2); margin: 5px 0; }
+.gl .ic { font-weight: 700; } .gl .ic.ok { color: var(--green); text-shadow: 0 0 8px var(--green); } .gl .ic.no { color: var(--muted); }
+.gl .mini-bar { grid-column: 2 / -1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.06); overflow: hidden; }
+.gl .mini-bar u { display: block; height: 100%; background: var(--cyan); }
+.gl .d { color: var(--text); font-weight: 500; text-align: right; }
+.cf { display: flex; gap: 8px; align-items: flex-start; font: 500 11px var(--sans); color: var(--text-2); margin: 5px 0; cursor: pointer; }
+.cf input { accent-color: var(--green); margin-top: 2px; }
+/* reward layer: P&L ticker, toasts, confetti, edge glow */
+.pnlTick { font: 700 15px var(--mono); padding: 3px 10px; border-radius: 8px; border: 1px solid var(--hair-2); transition: box-shadow .4s, border-color .4s; }
+.pnlTick.flash-up { border-color: var(--green); box-shadow: 0 0 22px rgba(52,211,153,.55); } .pnlTick.flash-down { border-color: var(--rose); box-shadow: 0 0 22px rgba(244,63,94,.5); }
+.streak { font: 700 11px var(--mono); color: var(--amber); letter-spacing: 1px; text-shadow: 0 0 10px rgba(251,191,36,.7); }
+.toasts { position: fixed; right: 16px; top: 64px; z-index: 50; display: grid; gap: 8px; width: min(340px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; padding: 10px 14px; border-radius: 12px; background: rgba(8,12,22,.92); border: 1px solid var(--c); box-shadow: 0 0 24px color-mix(in srgb, var(--c) 45%, transparent), inset 0 0 18px color-mix(in srgb, var(--c) 12%, transparent);
+  font: 500 11.5px var(--mono); color: var(--text-2); animation: tin .45s cubic-bezier(.2,1.4,.4,1) both; backdrop-filter: blur(8px); }
+.toast b { display: block; font: 700 14px var(--mono); color: var(--c); letter-spacing: .5px; margin-bottom: 2px; }
+.toast.out { animation: tout .4s ease-in forwards; }
+@keyframes tin { from { opacity: 0; transform: translateX(40px) scale(.9); } to { opacity: 1; transform: none; } }
+@keyframes tout { to { opacity: 0; transform: translateX(40px) scale(.95); } }
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+.stage .edge { position: absolute; inset: 0; pointer-events: none; border-radius: 0; box-shadow: inset 0 0 0 0 transparent; transition: box-shadow .9s ease-out; }
+.stage .edge.win { box-shadow: inset 0 0 90px 10px rgba(52,211,153,.35); transition: box-shadow .12s; }
+.stage .edge.loss { box-shadow: inset 0 0 70px 6px rgba(244,63,94,.22); transition: box-shadow .12s; }
+.kpi .v.bump { animation: bump .5s cubic-bezier(.2,1.6,.4,1); } @keyframes bump { 40% { transform: scale(1.12); } }
+@media (max-width: 1100px) { body { overflow: auto; } .app { height: auto; } .main { grid-template-columns: minmax(0, 1fr); } .stage { height: 600px; } .side { border-left: 0; border-top: 1px solid var(--hair); }
+  .legend { display: none; } .stage > .log, .stage > .mini { display: none; }
+  .under { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 10px 12px; border-top: 1px solid var(--hair); }
+  .under .ov { position: static; width: auto; } .under .mini { height: 220px; } }
+@media (max-width: 700px) { .stage { height: 520px; } .under { grid-template-columns: minmax(0, 1fr); } .pipe span { padding: 3px 6px; } .lbl .sub { display: none; } }
+.lvl1 .lbl:not(.sel) .sub { display: none; }
+</style>
+
+<div class="app">
+  <div class="bar">
+    <div class="mark">HELIX <span>HIP-4 CORTEX</span></div>
+    <div class="status"><div id="sTape"><i></i>TAPE</div><div id="sMM"><i></i>MAKER</div><div id="sJev"><i></i>JEV</div><div id="sPerp" class="warn"><i></i>PERPS OFF</div></div>
+    <div class="grow"></div>
+    <span class="streak" id="streak"></span>
+    <span class="pnlTick" id="liveTick" style="font-size:16px" title="REAL money: your Hyperliquid USDC plus open live positions at market. ▲/▼ = change since this page first saw the live wallet" hidden>—</span>
+    <span class="pnlTick" id="pnlTick" title="PAPER (simulated) P&amp;L of the main strategy - no real money" style="opacity:.75">—</span>
+    <span class="tag">PAPER</span>
+    <button class="btn" id="bSound" type="button" title="High-quality sound cues for trades, fills, exits and settlements">♪ Sound off</button>
+    <span class="clock" id="fps">— fps</span>
+    <span class="clock" id="clock"></span>
+    <a class="btn" href="/live">Perp Cortex ↗</a>
+    <a class="btn" href="/">Terminal ↗</a>
+  </div>
+  <div class="main" id="mainGrid">
+    <div class="stage" id="stage">
+      <canvas class="gl" id="gl"></canvas>
+      <div class="labels" id="labels"></div>
+      <div class="edge" id="edge"></div>
+      <div class="ov pipe" id="pipe"></div>
+      <div class="ov legend" id="legend">
+        <div><span class="d" style="color:var(--indigo)"></span><b>Lobes</b> one per underlying · <span style="color:var(--amber)">amber name</span> = stock/commodity</div>
+        <div><b>Strike neurons</b> market P(yes) <span class="grad"></span> 0 → 100%</div>
+        <div><span class="d" style="color:var(--cyan)"></span><b>JEV</b> · <span style="color:var(--purple)">CLAUDE</span> hubs · bond glows when they agree</div>
+        <div><span class="d" style="color:var(--amber)"></span><b>BOOK hub</b> real trades fly to their strike · <span style="color:var(--green)">bought</span>/<span style="color:var(--rose)">sold</span></div>
+        <div><span class="d" style="color:var(--green)"></span><b>MAKER hub</b> our fills · satellites = our positions</div>
+        <div><span class="d" style="color:var(--rose)"></span><b>Red rim</b> mostly empty books · <b>sparks</b> perp ticks</div>
+      </div>
+      <div class="ov focus"><button class="btn" id="bBack" type="button" title="Up one layer (Esc)">◂ Back</button><button class="btn" id="bOverview" type="button">Universe</button><button class="btn" id="bSpin" type="button">Auto-rotate on</button></div>
+      <div class="ov log"><h4><span>LIVE TAPE</span><span id="logN">—</span></h4><div id="log"></div></div>
+      <div class="ov mini"><h4><span id="miniT">—</span><span id="miniR"></span></h4><div class="cv"><canvas id="mini"></canvas></div></div>
+      <div class="nogl" id="nogl" hidden></div>
+    </div>
+    <div class="side" id="side"></div>
+  </div>
+  <div class="under" id="under">
+    <div class="ov log"><h4><span>LIVE TAPE</span><span id="logN2">—</span></h4><div id="log2"></div></div>
+    <div class="ov mini"><h4><span id="miniT2">—</span><span id="miniR2"></span></h4><div class="cv"><canvas id="mini2"></canvas></div></div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<canvas id="fx"></canvas>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+
+const $ = id => document.getElementById(id);
+const TOKEN = new URLSearchParams(location.search).get("token");
+if (TOKEN) { const f0 = window.fetch.bind(window); window.fetch = (u, o = {}) => String(u).startsWith("/api/") ? f0(u, { ...o, headers: { ...(o.headers || {}), "x-helix-token": TOKEN } }) : f0(u, o); }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const K = { text: css("--text"), text2: css("--text-2"), muted: css("--muted"), up: css("--up"), down: css("--down"), cyan: css("--cyan"), blue: css("--blue"),
+  purple: css("--purple"), indigo: css("--indigo"), rose: css("--rose"), green: css("--green"), amber: css("--amber"), white: css("--white"), mono: css("--mono") };
+const nowS = () => Date.now() / 1000;
+const fp = v => { if (v == null || !isFinite(v)) return "—"; const a = Math.abs(v); if (a >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 1 }); if (a >= 10) return v.toFixed(2); if (a >= 1) return v.toFixed(3); return v.toPrecision(4); };
+const cents = v => v == null || !isFinite(v) ? "—" : (v * 100).toFixed(1) + "¢";
+const scents = v => v == null || !isFinite(v) ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(2) + "¢";
+const usd = v => v == null || !isFinite(v) ? "—" : (v >= 0 ? "+$" : "−$") + Math.abs(v).toFixed(2);
+const cls = v => v == null ? "t2" : v >= 0 ? "up" : "down";
+const hhmm = t => new Date(t * 1000).toISOString().slice(11, 16);
+const hhmmss = t => new Date(t * 1000).toISOString().slice(11, 19);
+const dur = m => m == null ? "—" : m < 0 ? "settling" : m < 60 ? Math.max(0, Math.round(m)) + "m" : m < 1440 ? (m / 60).toFixed(1) + "h" : (m / 1440).toFixed(1) + "d";
+const ago = t => { const s = Math.max(0, nowS() - t); return s < 60 ? Math.floor(s) + "s" : s < 3600 ? Math.floor(s / 60) + "m" : (s / 3600).toFixed(1) + "h"; };
+const setText = (el, s) => { if (el && el.textContent !== s) el.textContent = s; };
+const setHTML = (el, s) => { if (el && el._h !== s) { el.innerHTML = s; el._h = s; } };
+function setStatus(id, c, text) { const el = $(id); el.className = c; el.lastChild.textContent = text; }
+async function get(u) { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status); return r.json(); }
+const mid = m => m && m.bid != null && m.ask != null ? (m.bid + m.ask) / 2 : null;
+const jevOf = fc => fc ? (fc.jev_v4 ?? fc.jev_v3 ?? fc.jev) : null;
+const VENUE = { out: K.cyan, skew: K.purple, HL: K.green, txyz: K.amber };
+const venueCol = v => VENUE[v] || K.blue;
+setInterval(() => setText($("clock"), new Date().toISOString().slice(11, 19) + " UTC"), 1000);
+
+// ===================================================================== state + routing
+let U = null, since = 0, route = { lvl: 1 }, world = null;
+function parse() {
+  const p = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  if (p[0] === "coin" && p[1]) return { lvl: 2, coin: p[1], exp: p[2] ? +p[2] : null, venue: p[3] || null };
+  if (p[0] === "m" && p[1]) return { lvl: 3, id: +p[1] };
+  return { lvl: 1 };
+}
+const go = h => { if (location.hash !== h) location.hash = h; else onRoute(); };
+window.addEventListener("hashchange", onRoute);
+function onRoute() { route = parse(); $("side").innerHTML = ""; document.body.classList.toggle("lvl1", route.lvl === 1); sideTick(true); renderPipe(); world?.focusRoute(route); }
+document.body.classList.toggle("lvl1", parse().lvl === 1);
+function marketById(id) { return U?.markets?.find(m => m.id === id); }
+function renderPipe() {
+  const m = route.lvl === 3 ? marketById(route.id) : null, coin = route.lvl === 2 ? route.coin : m?.coin;
+  const parts = [["L1 · UNIVERSE", "#/", K.cyan, 1]];
+  parts.push([coin ? `L2 · ${coin}` : "L2 · UNDERLYING", coin ? `#/coin/${encodeURIComponent(coin)}` : null, K.purple, 2]);
+  parts.push([m ? `L3 · ${m.rule === ">=" ? "≥" : ">"}${fp(m.strike)} ${hhmm(m.expiry)}` : "L3 · MARKET", null, K.green, 3]);
+  setHTML($("pipe"), parts.map(([t, h, c, l], i) => `${i ? "<em>›</em>" : ""}<span style="--c:${c}" class="${route.lvl === l ? "lit" : h || route.lvl === l ? "" : "off"}" data-h="${h || ""}">${esc(t)}</span>`).join(""));
+  $("pipe").querySelectorAll("span[data-h]").forEach(s => s.onclick = () => s.dataset.h && go(s.dataset.h));
+}
+$("bBack").onclick = () => back();
+function back() { if (route.lvl === 3) { const m = marketById(route.id); go(m ? `#/coin/${encodeURIComponent(m.coin)}/${m.expiry}/${encodeURIComponent(m.venue)}` : "#/"); } else if (route.lvl === 2) go("#/"); }
+window.addEventListener("keydown", e => { if (e.key === "Escape" && !/INPUT|SELECT/.test(document.activeElement?.tagName)) back(); });
+
+// ===================================================================== live tape log
+const LOG = [];
+function logEv(kind, text, col) { LOG.unshift({ t: nowS(), kind, text, col }); LOG.length = Math.min(LOG.length, 40); renderLog(); }
+function renderLog() { const h = LOG.slice(0, 8).map(e => `<div class="r"><span class="tm">${hhmmss(e.t)}</span><span class="k" style="color:${e.col}">${e.kind}</span>${e.text}</div>`).join("") || `<div class="r">waiting for the first trades…</div>`;
+  setHTML($("log"), h); setHTML($("log2"), h); }
+// the log and the mini chart float over the 3D scene on wide screens and sit under it on narrow ones
+function miniHead(title, right) { for (const s of ["", "2"]) { setText($("miniT" + s), title); setHTML($("miniR" + s), right || ""); } }
+const miniCanvas = () => $("mini2").offsetParent ? $("mini2") : $("mini");
+renderLog();
+
+// ===================================================================== sound: a small studio in Web Audio (no files, no network)
+// master bus -> glue compressor -> limiter -> out, with a stereo reverb send (procedural impulse) for space. Every
+// note is quantised to a pentatonic scale so overlapping events stay musical instead of becoming noise.
+const Sound = (() => {
+  let ctx = null, bus = null, wet = null, enabled = false;
+  const PENTA = [0, 2, 4, 7, 9], hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
+  const note = (base, step) => base + 12 * Math.floor(step / 5) + PENTA[((step % 5) + 5) % 5];
+  let pref = false; try { pref = localStorage.getItem("hip4.sound") === "1"; } catch {}
+  function init() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const glue = ctx.createDynamicsCompressor(); glue.threshold.value = -18; glue.ratio.value = 3; glue.attack.value = 0.01; glue.release.value = 0.25;
+    const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -3; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.1;
+    bus = ctx.createGain(); bus.gain.value = 0.8; bus.connect(glue); glue.connect(lim); lim.connect(ctx.destination);
+    const conv = ctx.createConvolver(), len = ctx.sampleRate * 2.6, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2) * (i < 200 ? i / 200 : 1); }
+    conv.buffer = ir; wet = ctx.createGain(); wet.gain.value = 0.32; wet.connect(conv); conv.connect(bus);
+  }
+  const out = (pan = 0, send = 0.4) => { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(bus);
+    if (send) { const s = ctx.createGain(); s.gain.value = send; p.connect(s); s.connect(wet); } return p; };
+  function tone(f, t, { type = "sine", dur = 0.4, vol = 0.2, a = 0.005, pan = 0, send = 0.35, detune = 0, lp = 0, glide = 0 } = {}) {
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f, t); o.detune.value = detune;
+    if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f * glide), t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = o; if (lp) { const fl = ctx.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.setValueAtTime(lp, t); fl.frequency.exponentialRampToValueAtTime(Math.max(200, lp * 0.25), t + dur); o.connect(fl); node = fl; }
+    node.connect(g); g.connect(out(pan, send)); o.start(t); o.stop(t + dur + 0.05);
+  }
+  // glassy bell: inharmonic partials with their own decays
+  function bell(f, t, vol = 0.18, pan = 0, dur = 1.6) { [[1, 1], [2.76, 0.45], [5.4, 0.25], [8.93, 0.12]].forEach(([r, v], i) =>
+    tone(f * r, t, { vol: vol * v, dur: dur / (1 + i * 0.6), a: 0.002, pan, send: 0.5 })); }
+  function pluck(f, t, vol = 0.1, pan = 0) { tone(f, t, { type: "triangle", vol, dur: 0.35, lp: 4200, pan, send: 0.3 }); tone(f * 2, t, { vol: vol * 0.25, dur: 0.18, pan, send: 0.2 }); }
+  function noise(t, { dur = 0.4, vol = 0.08, f = 6000, q = 0.8, type = "bandpass", pan = 0, sweep = 1 } = {}) {
+    const n = ctx.sampleRate * dur, b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const s = ctx.createBufferSource(); s.buffer = b; const fl = ctx.createBiquadFilter(); fl.type = type; fl.Q.value = q; fl.frequency.setValueAtTime(f, t);
+    if (sweep !== 1) fl.frequency.exponentialRampToValueAtTime(f * sweep, t + dur);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(fl); fl.connect(g); g.connect(out(pan, 0.5)); s.start(t); s.stop(t + dur);
+  }
+  const thump = (t, vol = 0.35) => tone(90, t, { vol, dur: 0.28, glide: 0.45, send: 0, a: 0.003 });
+  let lastTick = 0;
+  const api = {
+    get enabled() { return enabled; }, pref,
+    toggle() { init(); ctx.resume(); enabled = !enabled; try { localStorage.setItem("hip4.sound", enabled ? "1" : "0"); } catch {} if (enabled) api.chime(); return enabled; },
+    trade(p, bought) { if (!enabled) return; const now = ctx.currentTime; if (now - lastTick < 0.09) return; lastTick = now;
+      pluck(hz(note(bought ? 72 : 60, Math.round((p ?? 0.5) * 9))), now, 0.07 + Math.random() * 0.02, bought ? 0.35 : -0.35); },
+    fill(side) { if (!enabled) return; const t = ctx.currentTime, r = side > 0 ? 76 : 71;
+      thump(t, 0.25); [0, 4, 7].forEach((s, i) => bell(hz(r + s), t + i * 0.035, 0.11, (i - 1) * 0.4)); noise(t + 0.02, { dur: 0.7, vol: 0.05, f: 9000, sweep: 0.5 }); },
+    takeProfit() { if (!enabled) return; const t = ctx.currentTime;
+      bell(hz(95), t, 0.16, 0.3, 0.9); bell(hz(100), t + 0.09, 0.16, -0.3, 1.2);                    // cha-ching
+      [72, 76, 79, 84, 88].forEach((m, i) => tone(hz(m), t + 0.18 + i * 0.07, { type: "triangle", vol: 0.12, dur: 0.6, lp: 6000, pan: (i - 2) * 0.3 }));
+      noise(t + 0.15, { dur: 1.2, vol: 0.06, f: 11000, sweep: 0.6 }); thump(t, 0.3); },
+    stopLoss() { if (!enabled) return; const t = ctx.currentTime; tone(hz(57), t, { vol: 0.14, dur: 0.6, lp: 900, glide: 0.8 }); tone(hz(53), t + 0.16, { vol: 0.1, dur: 0.8, lp: 700 }); },
+    settleWin(big) { if (!enabled) return; const t = ctx.currentTime, k = Math.min(1, 0.4 + big);
+      noise(t, { dur: 1.0, vol: 0.07 * k, f: 1200, sweep: 6, type: "bandpass", q: 0.6 });                // whoosh up
+      [60, 64, 67, 72].forEach(m => tone(hz(m), t + 0.25, { type: "sawtooth", vol: 0.035 * k, dur: 2.4, a: 0.25, lp: 2400, detune: (Math.random() - .5) * 14, send: 0.6 }));   // pad swell
+      [72, 76, 79, 84, 88, 91].forEach((m, i) => bell(hz(m), t + 0.3 + i * 0.075, 0.09 * k, (i % 2 ? 1 : -1) * 0.4, 1.4)); thump(t + 0.25, 0.35); },
+    settleLoss() { if (!enabled) return; const t = ctx.currentTime; tone(hz(62), t, { vol: 0.1, dur: 0.9, lp: 1200 }); tone(hz(58), t + 0.22, { vol: 0.09, dur: 1.2, lp: 900 }); },
+    jev() { if (!enabled) return; bell(hz(note(84, Math.floor(Math.random() * 5))), ctx.currentTime, 0.05, (Math.random() - .5), 1.2); },
+    chime() { const t = ctx.currentTime; [72, 79, 84].forEach((m, i) => bell(hz(m), t + i * 0.08, 0.08)); },
+  };
+  return api;
+})();
+const renderSoundBtn = () => { const b = $("bSound"); b.classList.toggle("on", Sound.enabled); b.textContent = Sound.enabled ? "♪ Sound on" : Sound.pref ? "♪ Click to enable" : "♪ Sound off"; };
+$("bSound").onclick = () => { Sound.toggle(); renderSoundBtn(); }; renderSoundBtn();
+
+// ===================================================================== reward layer: toasts, confetti, P&L ticker, streaks
+function toast(title, sub, col) {
+  const box = $("toasts"), el = document.createElement("div"); el.className = "toast"; el.style.setProperty("--c", col);
+  el.innerHTML = `<b>${title}</b>${sub}`; box.prepend(el);
+  while (box.children.length > 4) box.lastChild.remove();
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 450); }, 5200);
+}
+const FX = { parts: [], cv: $("fx") };
+function confetti(n, cols, x = innerWidth * 0.5, y = innerHeight * 0.35) {
+  for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = 4 + Math.random() * 9;
+    FX.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 6, r: 2 + Math.random() * 4, c: cols[i % cols.length], life: 1, rot: Math.random() * 6, vr: (Math.random() - .5) * 0.4, sq: Math.random() < 0.5 }); }
+}
+function fxFrame(dt) {
+  if (!FX.parts.length) { if (FX.dirty) { FX.cv.getContext("2d").clearRect(0, 0, FX.cv.width, FX.cv.height); FX.dirty = false; } return; }
+  const c = FX.cv, dpr = devicePixelRatio || 1; if (c.width !== innerWidth * dpr) { c.width = innerWidth * dpr; c.height = innerHeight * dpr; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, innerWidth, innerHeight); FX.dirty = true;
+  FX.parts = FX.parts.filter(p => (p.life -= dt * 0.55) > 0);
+  for (const p of FX.parts) { p.vy += 18 * dt; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+    g.save(); g.globalAlpha = Math.min(1, p.life * 1.5); g.translate(p.x, p.y); g.rotate(p.rot); g.fillStyle = p.c; g.shadowColor = p.c; g.shadowBlur = 8;
+    if (p.sq) g.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r); else { g.beginPath(); g.arc(0, 0, p.r * 0.7, 0, 7); g.fill(); } g.restore(); }
+}
+function edgeGlow(kind) { const e = $("edge"); e.className = "edge " + kind; setTimeout(() => e.className = "edge", 160); }
+const Reward = { pnl: null, shown: null, streak: 0, t0: 0, from: 0 };
+function setPnl(v) {
+  if (v == null) return;
+  if (Reward.pnl != null && Math.abs(v - Reward.pnl) >= 0.005) { const el = $("pnlTick"); el.classList.remove("flash-up", "flash-down"); void el.offsetWidth;
+    el.classList.add(v > Reward.pnl ? "flash-up" : "flash-down"); setTimeout(() => el.classList.remove("flash-up", "flash-down"), 900); }
+  Reward.from = Reward.shown ?? v; Reward.pnl = v; Reward.t0 = performance.now();
+}
+function pnlFrame() { if (Reward.pnl == null) return; const k = Math.min(1, (performance.now() - Reward.t0) / 700), e = 1 - Math.pow(1 - k, 3);
+  Reward.shown = Reward.from + (Reward.pnl - Reward.from) * e; const el = $("pnlTick"); setText(el, "PAPER " + usd(Reward.shown)); el.style.color = Reward.shown >= 0 ? K.up : K.down; }
+// the LIVE cash feed: real total value (USDC + open positions at market), rolling and flashing like the paper one
+const LiveFeed = { val: null, shown: null, from: 0, t0: 0, start: null, mode: "OFF", pnl: 0 };
+async function pollLive() {
+  try { const P0 = await get("/api/pilot"); const R = P0.remote && P0.remote.mode ? P0.remote : null;
+    const P = R || P0;                                   // live runs on the Tokyo server: show THAT bot's money
+    const v = P.live_equity ?? P.wallet_usdc;
+    LiveFeed.mode = P.mode; LiveFeed.pnl = P.live_pnl_total ?? 0; LiveFeed.where = R ? " · Tokyo" : "";
+    $("liveTick").hidden = P.mode !== "LIVE" && v == null;
+    if (v != null) {
+      if (LiveFeed.start == null) { try { LiveFeed.start = +localStorage.getItem("hip4.liveStart") || v; localStorage.setItem("hip4.liveStart", LiveFeed.start); } catch { LiveFeed.start = v; } }
+      if (LiveFeed.val != null && Math.abs(v - LiveFeed.val) >= 0.005) { const el = $("liveTick"); el.classList.remove("flash-up", "flash-down"); void el.offsetWidth;
+        el.classList.add(v > LiveFeed.val ? "flash-up" : "flash-down"); setTimeout(() => el.classList.remove("flash-up", "flash-down"), 900);
+        if (v > LiveFeed.val) confetti(30, [K.amber, "#ffffff"], innerWidth * 0.75, 40); }
+      LiveFeed.from = LiveFeed.shown ?? v; LiveFeed.val = v; LiveFeed.t0 = performance.now(); }
+  } catch {}
+  setTimeout(pollLive, 5000);
+}
+function liveFrame() {
+  const el = $("liveTick"); if (LiveFeed.val == null) { if (LiveFeed.mode === "LIVE") setHTML(el, `<span style="color:${K.green}">● LIVE</span> waiting for wallet…`); return; }
+  const k = Math.min(1, (performance.now() - LiveFeed.t0) / 800), e = 1 - Math.pow(1 - k, 3);
+  LiveFeed.shown = LiveFeed.from + (LiveFeed.val - LiveFeed.from) * e;
+  const chg = LiveFeed.shown - LiveFeed.start;
+  setHTML(el, `<span style="color:${LiveFeed.mode === "LIVE" ? K.amber : K.muted}">${LiveFeed.mode === "LIVE" ? "● LIVE" + (LiveFeed.where || "") : "LIVE OFF"}</span> `
+    + `<span style="color:${K.white}">$${LiveFeed.shown.toFixed(2)}</span> <span class="${cls(chg)}">${chg >= 0 ? "▲" : "▼"} ${usd(chg)}</span>`);
+  el.style.borderColor = LiveFeed.mode === "LIVE" ? K.amber : "";
+}
+pollLive();
+const WIN = [K.green, K.cyan, K.amber, "#ffffff", K.purple];
+function onFill(f) {
+  const exit = String(f.how || "");
+  if (exit === "take-profit") { Sound.takeProfit(); confetti(140, WIN); edgeGlow("win"); toast("TAKE PROFIT", `${esc(f.coin)} &gt;${fp(f.strike)} · ${f.qty} @ ${cents(f.px)} · <span class="up">+${(f.exit_pc * 100).toFixed(1)}¢/contract</span>`, K.green); }
+  else if (exit === "stop-loss") { Sound.stopLoss(); edgeGlow("loss"); toast("STOPPED OUT", `${esc(f.coin)} &gt;${fp(f.strike)} · ${f.qty} @ ${cents(f.px)} · ${(f.exit_pc * 100).toFixed(1)}¢/contract`, K.rose); }
+  else { Sound.fill(f.side); confetti(26, [f.side > 0 ? K.green : K.rose, K.cyan, "#ffffff"], innerWidth * 0.5, innerHeight * 0.5);
+    toast(f.how === "snipe" ? (f.side > 0 ? "PAPER SNIPE · BOUGHT YES" : "PAPER SNIPE · SOLD YES") : f.side > 0 ? "PAPER · BOUGHT" : "PAPER · SOLD", `${esc(f.coin)} &gt;${fp(f.strike)} · ${f.qty} @ ${cents(f.px)} · edge <span class="${cls(f.edge)}">${scents(f.edge)}</span>`, K.cyan); }
+}
+function onLive(o) {          // REAL money events: always marked LIVE, gold
+  const where = `${esc(o.underlying || "")} &gt;${fp(o.strike)}`;
+  if (o.status === "filled") { Sound.takeProfit(); confetti(90, [K.amber, "#ffffff", K.green]); edgeGlow("win");
+    toast("● LIVE FILL · REAL MONEY", `${where} · ${o.is_buy ? "bought" : "sold"} ${o.filled} ${(o.coin || "").endsWith("1") ? "No" : "Yes"} @ ${cents(o.avg_px)}`, K.amber); }
+  else if (o.status === "settled") { if (o.pnl >= 0) { Sound.settleWin(1); confetti(160, [K.amber, K.green, "#ffffff"]); edgeGlow("win"); } else { Sound.settleLoss(); edgeGlow("loss"); }
+    toast(`● LIVE SETTLED · ${usd(o.pnl)}`, `real money · y=${o.y ?? "?"}`, o.pnl >= 0 ? K.amber : K.rose); }
+  else if (o.status === "error" || o.status === "halted") { Sound.stopLoss(); toast(o.status === "halted" ? "● LIVE PILOT HALTED" : "● LIVE ORDER ERROR", esc(o.reason || o.status), K.rose); }
+}
+function onSettle(s) {
+  if (s.pnl >= 0) { Reward.streak += 1; Sound.settleWin(Math.min(1, s.pnl / 20)); confetti(80 + Math.min(220, Math.round(s.pnl * 10)), WIN); edgeGlow("win");
+    toast(`PAPER SETTLED · WON ${usd(s.pnl)}`, `simulated, not real money · ${esc(s.coin)} &gt;${fp(s.strike)} → ${s.y === 1 ? "YES" : "NO"}${Reward.streak > 1 ? ` · <span class="amber">${Reward.streak} in a row</span>` : ""}`, K.green); }
+  else { Reward.streak = 0; Sound.settleLoss(); edgeGlow("loss"); toast(`PAPER SETTLED · ${usd(s.pnl)}`, `simulated, not real money · ${esc(s.coin)} &gt;${fp(s.strike)} → ${s.y === 1 ? "YES" : s.y === 0 ? "NO" : "void"}`, K.rose); }
+  setText($("streak"), Reward.streak > 1 ? `🔥 ${Reward.streak} WINS IN A ROW` : "");
+}
+
+// ===================================================================== universe poll -> scene + effects
+async function pollU() {
+  try {
+    const u = await get("/api/hip4/universe?since=" + since);
+    const first = !U; U = u;
+    if (!first) {
+      // three kinds of line, never mixed up again (2026-10-09: paper's x5 +$156 looked like money the user never got):
+      // MKT = other traders' trades (market data) · PAPER = the simulated sniper (pretend $10k, x5 size) · ● LIVE = real
+      for (const m of u.markets) for (const t of m.new) { world?.trade(m, t); Sound.trade(t.p, t.sd === "B"); logEv(t.sd === "B" ? "MKT BUY" : "MKT SELL", `<span class="t2">others ·</span> ${esc(m.coin)} ${m.rule === ">=" ? "≥" : ">"}${fp(m.strike)} ${hhmm(m.expiry)} · ${t.s} @ ${cents(t.p)}`, K.muted); }
+      for (const f of u.fills) { world?.fill(f); onFill(f); const ex = f.how === "take-profit" || f.how === "stop-loss";
+        logEv(ex ? "PAPER " + f.how.toUpperCase() : f.side > 0 ? "PAPER BUY" : "PAPER SELL", `<span class="t2">simulated ·</span> ${esc(f.coin)} >${fp(f.strike)} · ${f.qty} @ ${cents(f.px)} · ${ex ? (f.exit_pc * 100).toFixed(1) + "¢/ct" : "edge " + scents(f.edge)}`, f.how === "take-profit" ? K.green : f.how === "stop-loss" ? K.rose : K.cyan); }
+      for (const o of u.live || []) { world?.live(o); onLive(o);
+        logEv("● LIVE", o.status === "settled" ? `${esc(o.underlying || "")} settled · <b class="${cls(o.pnl)}">${usd(o.pnl)}</b> real`
+          : o.status === "halted" ? `pilot halted: ${esc(o.reason || "")}`
+          : `${o.is_buy ? "BUY" : "SELL"} ${o.sz} ${esc(o.coin || "")} ${(o.coin || "").endsWith("1") ? "(No)" : "(Yes)"} ${esc(o.underlying || "")} &gt;${fp(o.strike)} @ ${cents(o.px)} → <b class="${o.status === "filled" ? "up" : o.status === "error" ? "down" : "t2"}">${esc(o.status)}${o.filled ? " " + o.filled + " @ " + cents(o.avg_px) : ""}</b>`, K.amber); }
+      for (const s of u.settled) { world?.settle(s); onSettle(s); logEv("PAPER SETTLED", `<span class="t2">simulated ×5 ·</span> ${esc(s.coin)} >${fp(s.strike)} → ${s.y === 1 ? "YES" : s.y === 0 ? "NO" : s.y ?? "void"} · ${usd(s.pnl)} <span class="t2">(not real money)</span>`, s.pnl >= 0 ? K.up : K.down); }
+    }
+    since = u.ts;
+    world?.sync(u);
+    const n = u.markets.length, live = u.markets.filter(m => m.bid != null).length;
+    const ln = `${n} markets · ${live} live books · ${Object.keys(u.coins).length} underlyings`; setText($("logN"), ln); setText($("logN2"), ln);
+    if (u.mm) setPnl(u.mm.pnl);
+    if (!first) for (const m of u.markets) { const ts = m.fc?.ts; if (ts && JEVSEEN[m.id] && JEVSEEN[m.id] !== ts) Sound.jev(); if (ts) JEVSEEN[m.id] = ts; }
+    else for (const m of u.markets) if (m.fc?.ts) JEVSEEN[m.id] = m.fc.ts;
+    if (u.mm) setStatus("sMM", u.mm.killed ? "bad" : ["quoting", "sniping"].includes(u.mm.status) ? "ok" : "warn",
+      `${u.mm.strategy === "sniper" ? "SNIPER" : "MAKER"} ${u.mm.killed ? "STOPPED" : u.mm.status.toUpperCase()} · ${usd(u.mm.pnl)}`);
+    const jv = u.markets.map(m => m.fc?.ts).filter(Boolean); if (jv.length) setStatus("sJev", nowS() - Math.max(...jv) < 3600 ? "ok" : "warn", `JEV ${ago(Math.max(...jv))} ago`);
+    if (first) renderPipe();
+  } catch (e) { setStatus("sTape", "bad", "TAPE " + e.message); }
+  setTimeout(pollU, 1000);
+}
+async function pollTape() { try { const t = await get("/api/tape"); setStatus("sTape", t.status === "recording" ? "ok" : t.enabled ? "warn" : "bad", t.enabled ? `TAPE ${t.status.toUpperCase()} · ${t.mb_on_disk} MB` : "TAPE OFF"); } catch {} setTimeout(pollTape, 5000); }
+
+// ===================================================================== the 3D HIP-4 cortex: the original Cortex brain, one lobe per underlying
+// L1 = every lobe around the brain core · L2 = one lobe (its strike neurons light up, one shell per expiry, soonest
+// innermost) · L3 = one strike neuron with its probability gauge. Hubs per lobe as in the original Cortex:
+// JEV (cyan) · CLAUDE (purple) · BOOK (amber, the HIP-4 order books) · MAKER (green, our paper market maker).
+const C3 = { up: new THREE.Color(K.green), down: new THREE.Color(K.rose), mid: new THREE.Color(K.indigo), cyan: new THREE.Color(K.cyan), purple: new THREE.Color(K.purple),
+  amber: new THREE.Color(K.amber), blue: new THREE.Color(K.blue), white: new THREE.Color(K.white), dim: new THREE.Color("#1e293b") };
+function probColor(p, out) { if (p == null) return out.copy(C3.dim); return p < 0.5 ? out.copy(C3.down).lerp(C3.mid, p / 0.5) : out.copy(C3.mid).lerp(C3.up, (p - 0.5) / 0.5); }
+
+function makeWorld() {
+  const stage = $("stage"), canvas = $("gl");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color("#030712"); scene.fog = new THREE.FogExp2("#05080f", 0.0085);
+  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 2000); camera.position.set(0, 26, 66);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = 0.06; controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
+  controls.minDistance = 4; controls.maxDistance = 150; controls.enablePan = false; controls.target.set(0, 0, 0);
+  const labelR = new CSS2DRenderer({ element: $("labels") });
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const BLOOM = 0.95;
+  const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), BLOOM, 0.55, 0.14); composer.addPass(bloom); composer.addPass(new OutputPass());
+  let bloomKick = 0;
+  const overview = { pos: camera.position.clone(), target: new THREE.Vector3() };
+
+  // ---- starfield + floor grid
+  { const n = 1600, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const r = 180 + Math.random() * 260, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+      pos[i * 3] = r * Math.sin(ph) * Math.cos(th); pos[i * 3 + 1] = r * Math.cos(ph) * 0.6; pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th); }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x7dd3fc, size: 0.6, transparent: true, opacity: 0.45, depthWrite: false })));
+    const grid = new THREE.PolarGridHelper(46, 12, 8, 96, 0x0e7490, 0x0e3a52); grid.position.y = -13; grid.material.transparent = true; grid.material.opacity = 0.22; scene.add(grid); }
+
+  // ---- the core: noise-displaced fresnel orb + wire shell + brain point cloud
+  const coreUni = { uTime: { value: 0 }, uAmp: { value: 0.6 }, uColA: { value: C3.cyan.clone() }, uColB: { value: C3.purple.clone() }, uGlow: { value: 1 } };
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(5.6, 6), new THREE.ShaderMaterial({
+    uniforms: coreUni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `uniform float uTime; uniform float uAmp; varying vec3 vN; varying vec3 vV; varying float vD;
+      float h(vec3 p){ p = fract(p * 0.3183099 + .1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float n3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      void main(){ float n = n3(position * 0.42 + uTime * 0.55) * 0.65 + n3(position * 1.1 - uTime * 0.9) * 0.35; vD = n;
+        vec3 p = position + normal * (n - 0.45) * uAmp * 2.2; vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uColA; uniform vec3 uColB; uniform float uGlow; varying vec3 vN; varying vec3 vV; varying float vD;
+      void main(){ float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+        vec3 c = mix(uColA, uColB, rim) * (0.06 + 1.15 * rim) + uColA * vD * 0.16 * uGlow; gl_FragColor = vec4(c, 0.35 + 0.5 * rim); }`,
+  }));
+  scene.add(core);
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(7.4, 2), new THREE.MeshBasicMaterial({ color: K.cyan, wireframe: true, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(shell);
+  const brain = (() => { const n = 2600, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), c1 = new THREE.Color(K.indigo), c2 = new THREE.Color(K.purple), tmp = new THREE.Color();
+    for (let i = 0; i < n; i++) { const side = i % 2 ? 1 : -1, u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1), j = 0.92 + Math.random() * 0.12;
+      const x = Math.sin(v) * Math.cos(u), y = Math.cos(v), z = Math.sin(v) * Math.sin(u);
+      pos[i * 3] = side * (2.4 + Math.abs(x) * 6.2 * j); pos[i * 3 + 1] = y * 7.2 * j; pos[i * 3 + 2] = z * 9.6 * j;
+      tmp.copy(c1).lerp(c2, Math.random()); col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b; }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    const p = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(p); return p; })();
+
+  // ---- sprite texture for photons
+  const spr = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.25, "rgba(255,255,255,.75)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+
+  // ---- dynamic topology, rebuilt when the list of markets changes
+  const NPL = 52, HUBC = [C3.cyan, C3.purple, C3.amber, C3.up];
+  let G = null;
+  const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpC = new THREE.Color(), mtx = new THREE.Matrix4();
+  const keyOf = u => u.markets.map(m => m.id).join(",");
+
+  function build(u) {
+    if (G) { for (const o of G.objects) { scene.remove(o); o.geometry?.dispose?.(); } for (const l of G.lobes) l.label.element.remove(); for (const s of G.slbl) s.o.element.remove(); }
+    const coins = Object.keys(u.coins).sort((a, b) => (a.includes(":") - b.includes(":")) || u.coins[b].markets - u.coins[a].markets || a.localeCompare(b));
+    // ring radius grows with the number of lobes so lobes (about 16 units wide with their hubs) never overlap
+    const L = coins.length, R = Math.max(26, L * 19 / (2 * Math.PI)), lobes = [], objects = [], slbl = [];
+    const zoom = R / 26, lift = L > 8 ? 1.75 : 1;
+    overview.pos.set(0, 26 * zoom * lift, 66 * zoom / Math.sqrt(lift)); controls.maxDistance = Math.max(150, 150 * zoom);
+    scene.fog.density = 0.0085 / zoom;
+    if (!G) camera.position.copy(overview.pos);
+    const home = [], hubPos = new Float32Array(L * 4 * 3), corePts = [], strikeIdx = new Map();
+    for (let i = 0; i < L; i++) {
+      const coin = coins[i], a = i / L * Math.PI * 2 + Math.PI / 2, c = new THREE.Vector3(Math.cos(a) * R, 0, Math.sin(a) * R), rh = c.clone().normalize(), th = new THREE.Vector3(-rh.z, 0, rh.x);
+      const hubs = [c.clone().addScaledVector(rh, -7).add(new THREE.Vector3(0, 2.6, 0)), c.clone().addScaledVector(rh, -7).add(new THREE.Vector3(0, -2.6, 0)),
+                    c.clone().addScaledVector(th, 7.2), c.clone().addScaledVector(th, -7.2)];
+      hubs.forEach((h, k) => hubPos.set([h.x, h.y, h.z], (i * 4 + k) * 3));
+      corePts.push(rh.clone().multiplyScalar(6.2));
+      const first = home.length;
+      for (let k = 0; k < NPL; k++) { const uu = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1), r = Math.cbrt(Math.random());
+        home.push({ lobe: i, off: new THREE.Vector3(Math.sin(v) * Math.cos(uu) * 5.4 * r, Math.cos(v) * 3.6 * r, Math.sin(v) * Math.sin(uu) * 5.4 * r),
+          ph: Math.random() * 6.28, f: 0.4 + Math.random() * 0.9, flash: 0, id: null }); }
+      // strike neurons: one shell per expiry inside the lobe (soonest innermost), strikes around it in order
+      const mk = u.markets.filter(m => m.coin === coin).sort((p, q) => p.expiry - q.expiry || p.strike - q.strike);
+      const exps = [...new Set(mk.map(m => m.expiry + "|" + m.venue))].slice(0, 6);
+      exps.forEach((key, k) => { const row = mk.filter(m => m.expiry + "|" + m.venue === key), r = 1.8 + k * 0.62, tilt = (k - (exps.length - 1) / 2) * 0.55;
+        row.forEach((m, j) => { const ang = j / row.length * Math.PI * 2 + k * 0.7, off = new THREE.Vector3(Math.cos(ang) * r * 1.25, tilt + Math.sin(ang * 2) * 0.25, Math.sin(ang) * r);
+          strikeIdx.set(m.id, home.length);
+          home.push({ lobe: i, off, ph: Math.random() * 6.28, f: 0.3 + Math.random() * 0.3, flash: 0, id: m.id, shellK: k }); }); });
+      // shell with fresnel rim (red when most of its books are empty)
+      const sh = new THREE.Mesh(new THREE.SphereGeometry(7.4, 40, 30), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        uniforms: { uCol: { value: new THREE.Color(K.indigo) }, uI: { value: 0.35 } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
+        fragmentShader: `uniform vec3 uCol; uniform float uI; varying vec3 vN; varying vec3 vV; void main(){ float r = pow(1.0 - abs(dot(vN, vV)), 3.0); gl_FragColor = vec4(uCol * r * uI, r * uI); }` }));
+      sh.position.copy(c); sh.userData.coin = coin; scene.add(sh); objects.push(sh);
+      const hubMeshes = HUBC.map((col, k) => { const m = new THREE.Mesh(new THREE.SphereGeometry(k < 2 ? 0.75 : 0.6, 20, 16), new THREE.MeshBasicMaterial({ color: col }));
+        m.position.copy(hubs[k]); scene.add(m); objects.push(m);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.28, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+        ring.position.copy(hubs[k]); scene.add(ring); objects.push(ring); return { m, ring, base: k < 2 ? 1 : 0.85 }; });
+      const el = document.createElement("div"); el.className = "lbl";
+      el.innerHTML = `<b style="color:${coin.includes(":") ? K.amber : K.text}">${esc(coin.replace("xyz:", ""))}</b><span class="px">—</span><div class="call">—</div><div class="sub">—</div>`;
+      el.addEventListener("click", () => go(`#/coin/${encodeURIComponent(coin)}`));
+      const label = new CSS2DObject(el); label.position.copy(c).add(new THREE.Vector3(0, 9.2, 0)); scene.add(label); objects.push(label);
+      lobes.push({ coin, c, rh, th, hubs, shell: sh, hubMeshes, label, lean: new THREE.Color(K.indigo), act: 0, stress: 0, agree: 0, accA: 0, tickQ: 0, tickDir: 1, spot: null,
+        first, el, pxEl: el.querySelector(".px"), callEl: el.querySelector(".call"), subEl: el.querySelector(".sub"), lastFc: {} });
+      // strike labels (shown for the focused lobe)
+      for (const m of mk) { const n = strikeIdx.get(m.id); if (n == null) continue; const sl = document.createElement("div"); sl.className = "lbl nd dim";
+        sl.innerHTML = `<b>${m.rule === ">=" ? "≥" : ">"}${fp(m.strike)}</b> <span class="muted">${hhmm(m.expiry)}</span> <span class="v">—</span>`;
+        sl.addEventListener("click", e => { e.stopPropagation(); go(`#/m/${m.id}`); });
+        const o = new CSS2DObject(sl); o.position.copy(c).add(home[n].off).add(new THREE.Vector3(0, 0.75, 0)); scene.add(o); objects.push(o); slbl.push({ o, n, id: m.id, coin, vEl: sl.querySelector(".v") }); }
+    }
+    const NN = home.length, neuronPos = new Float32Array(NN * 3);
+    const neurons = new THREE.InstancedMesh(new THREE.SphereGeometry(0.3, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }), NN);
+    neurons.instanceMatrix.setUsage(THREE.DynamicDrawUsage); for (let i = 0; i < NN; i++) neurons.setColorAt(i, C3.mid);
+    scene.add(neurons); objects.push(neurons);
+    // edges: each neuron to its 2 nearest in the lobe, hubs to 5 nearest, strike neurons to the BOOK hub
+    const edges = [];
+    for (let i = 0; i < L; i++) {
+      const ids = home.map((h, n) => h.lobe === i ? n : -1).filter(n => n >= 0);
+      for (const a of ids) { const da = ids.filter(b => b !== a).map(b => [home[a].off.distanceToSquared(home[b].off), b]).sort((x, y) => x[0] - y[0]);
+        for (const [, b] of da.slice(0, 2)) if (a < b || !da.slice(0, 2).some(([, bb]) => bb === a)) edges.push([0, a, 0, b, 0, i]); }
+      for (let k = 0; k < 4; k++) { const hp = lobes[i].hubs[k], d = ids.map(b => [tmpV.copy(lobes[i].c).add(home[b].off).distanceToSquared(hp), b]).sort((x, y) => x[0] - y[0]);
+        for (const [, b] of d.slice(0, 5)) edges.push([1, i * 4 + k, 0, b, 1, i]); }
+      for (const n of ids) if (home[n].id != null) edges.push([1, i * 4 + 2, 0, n, 6, i]);
+    }
+    const lobeEdges = Array.from({ length: L }, () => []); edges.forEach((e, k) => lobeEdges[e[5]].push(k));
+    const bridges = []; for (let i = 0; i < L; i++) { bridges.push([1, i * 4, 2, i, 2, i]); bridges.push([1, i * 4 + 1, 2, i, 3, i]); bridges.push([1, i * 4 + 2, 1, ((i + 1) % L) * 4 + 3, 4, i]); }
+    const bonds = []; for (let i = 0; i < L; i++) bonds.push([1, i * 4, 1, i * 4 + 1, 5, i]);
+    const mkLines = (list2, opacity) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(list2.length * 6), 3).setUsage(THREE.DynamicDrawUsage));
+      g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(list2.length * 6), 3).setUsage(THREE.DynamicDrawUsage));
+      const ls = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+      scene.add(ls); objects.push(ls); return ls; };
+    const edgeLines = mkLines(edges, 0.55), bridgeLines = mkLines(bridges, 0.75), bondLines = mkLines(bonds, 1);
+    const PMAX = 2400, pg = new THREE.BufferGeometry(), ppos = new Float32Array(PMAX * 3).fill(9999), pcol = new Float32Array(PMAX * 3), psz = new Float32Array(PMAX);
+    pg.setAttribute("position", new THREE.BufferAttribute(ppos, 3).setUsage(THREE.DynamicDrawUsage)); pg.setAttribute("color", new THREE.BufferAttribute(pcol, 3).setUsage(THREE.DynamicDrawUsage));
+    pg.setAttribute("size", new THREE.BufferAttribute(psz, 1).setUsage(THREE.DynamicDrawUsage));
+    const photons = new THREE.Points(pg, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTex: { value: spr } },
+      vertexShader: `attribute float size; attribute vec3 color; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * (260.0 / -mv.z); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform sampler2D uTex; varying vec3 vC; void main(){ vec4 t = texture2D(uTex, gl_PointCoord); gl_FragColor = vec4(vC * t.a * 1.6, t.a); }` }));
+    photons.frustumCulled = false; scene.add(photons); objects.push(photons);
+    const pool = []; for (let i = 0; i < PMAX; i++) pool.push({ live: false });
+    const rings = []; for (let i = 0; i < 48; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+      m.visible = false; scene.add(m); objects.push(m); rings.push({ m, live: false }); }
+    G = { key: keyOf(u), coins, lobes, objects, neurons, home, neuronPos, hubPos, corePts, edges, lobeEdges, bridges, bonds, edgeLines, bridgeLines, bondLines, photons, pool, ppos, pcol, psz, rings,
+      sats: new Map(), strikeIdx, slbl, data: new Map() };
+  }
+
+  function endPos(k, i, out) {
+    if (k === 0) return out.set(G.neuronPos[i * 3], G.neuronPos[i * 3 + 1], G.neuronPos[i * 3 + 2]);
+    if (k === 1) return out.set(G.hubPos[i * 3], G.hubPos[i * 3 + 1], G.hubPos[i * 3 + 2]);
+    return out.copy(G.corePts[i]);
+  }
+  function spawn(ka, ia, kb, ib, color, { speed = 1.2, size = 1.6 } = {}) {
+    if (!G) return; const p = G.pool.find(x => !x.live); if (!p) return;
+    p.live = true; p.ka = ka; p.ia = ia; p.kb = kb; p.ib = ib; p.t = 0; p.speed = speed * (0.75 + Math.random() * 0.5); p.size = size; p.col = color;
+  }
+  const randNeuron = li => G.lobes[li].first + Math.floor(Math.random() * NPL);
+  function ring(pos, color, { maxR = 4, life = 1.1, start = 0.6, a0 = 0.9 } = {}) {
+    if (!G) return; const r = G.rings.find(x => !x.live); if (!r) return;
+    r.live = true; r.pos = pos.clone(); r.t = 0; r.life = life; r.maxR = maxR; r.start = start; r.a0 = a0; r.m.material.color.copy(color); r.m.visible = true;
+  }
+  const lobeOf = c => G?.lobes.findIndex(l => l.coin === c) ?? -1;
+  const posOf = n => tmpV2.set(G.neuronPos[n * 3], G.neuronPos[n * 3 + 1], G.neuronPos[n * 3 + 2]).clone();
+
+  // ---- per-poll data
+  function sync(u) {
+    const fresh = !G || G.key !== keyOf(u); if (fresh) build(u);
+    for (const m of u.markets) G.data.set(m.id, m);
+    for (let i = 0; i < G.lobes.length; i++) {
+      const l = G.lobes[i], c = u.coins[l.coin] || {}, mk = u.markets.filter(m => m.coin === l.coin), live = mk.filter(m => m.bid != null);
+      if (l.spot != null && c.spot != null && c.spot !== l.spot) { l.tickQ += 1; l.tickDir = c.spot > l.spot ? 1 : -1; }
+      l.spot = c.spot; l.act = Math.min(1, l.act + (c.new_trades || 0) * 0.3);
+      l.stress = mk.length ? 1 - live.length / mk.length : 1;
+      // the lobe's headline market: the soonest live book nearest 50%
+      const head = live.slice().sort((p, q) => p.expiry - q.expiry || Math.abs(mid(p) - 0.5) - Math.abs(mid(q) - 0.5))[0];
+      probColor(head ? mid(head) : null, tmpC); l.leanTarget = head ? tmpC.clone() : new THREE.Color(K.indigo);
+      const fcs = mk.filter(m => m.fc && m.fc.jev != null && m.fc.claude != null);
+      l.agreeT = fcs.length ? Math.max(0, 1 - fcs.reduce((a, m) => a + Math.abs(jevOf(m.fc) - m.fc.claude), 0) / fcs.length * 6) : 0;
+      for (const m of mk) { const f = m.fc; if (!f) continue; const was = l.lastFc[m.id];
+        if (was != null && was !== f.ts) { api.jevPulse(i); if (f.claude != null) api.claudeBurst(i); } l.lastFc[m.id] = f.ts; }
+      setText(l.pxEl, fp(c.spot));
+      setHTML(l.callEl, head ? `<span class="amber">MKT</span> ${cents(mid(head))}${(head.fair ?? head.model) != null ? ` · <span class="cyan">FAIR</span> ${cents(head.fair ?? head.model)}` : ""}${jevOf(head.fc) != null ? ` · <span style="color:${K.white}">JEV</span> ${cents(jevOf(head.fc))}` : ""}` : `<span class="muted">no live book</span>`);
+      setHTML(l.subEl, `${c.markets ?? 0} mkts · ${c.live ?? 0} live${head ? ` · ${hhmm(head.expiry)} &gt;${fp(head.strike)}` : ""}`);
+    }
+    for (const s of G.slbl) { const m = G.data.get(s.id); const pm = mid(m); setHTML(s.vEl, pm != null ? `<span class="amber">${cents(pm)}</span>${m.fair != null ? ` <span class="cyan">${cents(m.fair)}</span>` : ""}` : `<span class="muted">no book</span>`); }
+    // our positions orbit their lobe
+    const keep = new Set();
+    for (const m of u.markets) { if (!m.qty) continue; const key = String(m.id); keep.add(key); if (G.sats.has(key)) continue; const i = lobeOf(m.coin); if (i < 0) continue;
+      const col = m.qty > 0 ? K.green : K.rose, sm = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.16, 10, 40), new THREE.MeshBasicMaterial({ color: col }));
+      sm.add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 10), new THREE.MeshBasicMaterial({ color: col }))); scene.add(sm); G.objects.push(sm);
+      G.sats.set(key, { m: sm, lobe: i, ang: Math.random() * 6.28, r: 9.5, tilt: 0.5 }); }
+    for (const [key, s] of G.sats) if (!keep.has(key)) s.dying = s.dying || 0.0001;
+    const pnl = u.mm?.pnl ?? 0; G.pnl = pnl;
+    if (route.lvl === 3) gauge(route.id);
+    if (fresh) focusRoute(route, true);
+  }
+
+  // ---- effects
+  const api = {
+    sync,
+    jevPulse(i) { const l = G.lobes[i]; ring(l.hubs[0], C3.cyan, { maxR: 3.2 }); for (let k = 0; k < 10; k++) spawn(1, i * 4, 0, randNeuron(i), C3.cyan, { speed: 1.6, size: 1.4 }); },
+    claudeBurst(i) { const l = G.lobes[i]; ring(l.hubs[1], C3.purple, { maxR: 5.5, life: 1.6 }); for (let k = 0; k < 20; k++) setTimeout(() => spawn(2, i, 1, i * 4 + 1, C3.purple, { speed: 0.9, size: 2.0 }), k * 35); },
+    live(o) {   // a REAL order: gold pulse at its strike, a burst from the MAKER hub, a bigger one when it fills
+      const n = G?.strikeIdx.get(o.mid); if (n == null) return; const i = G.home[n].lobe, gold = C3.amber, filled = o.status === "filled";
+      ring(posOf(n), gold, { maxR: filled ? 6 : 2.6, life: filled ? 1.8 : 1.0, a0: 1 }); G.home[n].flash = filled ? 2 : 0.8;
+      for (let k = 0; k < (filled ? 40 : 10); k++) setTimeout(() => spawn(1, i * 4 + 3, 0, n, gold, { speed: 1.1, size: filled ? 2.4 : 1.4 }), k * 20);
+      if (filled) { bloomKick = 1.2; ring(G.lobes[i].hubs[3], gold, { maxR: 12, life: 2, a0: 1 }); } },
+    trade(m, t) { const i = lobeOf(m.coin), n = G?.strikeIdx.get(m.id); if (i < 0 || n == null) return; const col = t.sd === "B" ? C3.up : C3.down, k = Math.min(16, 4 + Math.round(Math.sqrt(t.s) * 1.5));
+      ring(G.lobes[i].hubs[2], col, { maxR: 3 + Math.min(4, t.s / 50) });
+      for (let j = 0; j < k; j++) setTimeout(() => spawn(1, i * 4 + 2, 0, n, col, { speed: 1.1, size: 1.5 + Math.min(1.2, t.s / 80) }), j * 25);
+      G.home[n].flash = 1; G.lobes[i].act = Math.min(1, G.lobes[i].act + 0.3); },
+    fill(f) { const i = lobeOf(f.coin), n = G?.strikeIdx.get(f.id); if (i < 0) return; const col = f.side > 0 ? C3.up : C3.down; bloomKick = 1;
+      ring(G.lobes[i].hubs[3], col, { maxR: 11, life: 1.8, a0: 1 }); if (n != null) { ring(posOf(n), C3.white, { maxR: 3.5, life: 1.2 }); G.home[n].flash = 1.5; }
+      for (let k = 0; k < 40; k++) setTimeout(() => spawn(1, i * 4 + 3, 2, i, col, { speed: 0.8, size: 2.2 }), k * 20); },
+    settle(s) { const i = lobeOf(s.coin); if (i < 0) return; const col = s.pnl >= 0 ? C3.up : C3.down; bloomKick = 1;
+      ring(new THREE.Vector3(0, 0, 0), col, { maxR: 16, life: 2.0, a0: 1 });
+      for (let k = 0; k < 50; k++) setTimeout(() => spawn(2, i, 0, randNeuron(Math.floor(Math.random() * G.lobes.length)), col, { speed: 0.7, size: 1.8 }), k * 18); },
+  };
+
+  // ---- the layer-3 gauge: market bid-ask band + fair / model / Jev / Claude / our quotes on a 0-100% column
+  let G3 = null;
+  function gauge(id) {
+    if (G3 && G3.id !== id) { scene.remove(G3.group); G3 = null; }
+    const n = G?.strikeIdx.get(id), m = G?.data.get(id); if (n == null || !m) return;
+    const l = G.lobes[G.home[n].lobe];
+    if (!G3) { const group = new THREE.Group(); group.position.copy(l.c).add(G.home[n].off).addScaledVector(l.th, 1.4).add(new THREE.Vector3(0, -1.5, 0)); scene.add(group);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 3, 0.05), new THREE.MeshBasicMaterial({ color: K.muted })); rail.position.y = 1.5; group.add(rail);
+      for (const yy of [0, 1.5, 3]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.02, 0.02), new THREE.MeshBasicMaterial({ color: K.muted })); t.position.y = yy; group.add(t); }
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1, 0.28), new THREE.MeshBasicMaterial({ color: K.amber, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })); group.add(band);
+      const tick = col => { const t = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: col })); group.add(t); return t; };
+      G3 = { id, group, band, fair: tick(K.cyan), model: tick(K.purple), jev: tick(K.white), claude: tick("#c084fc"), ob: tick(K.green), oa: tick(K.green) }; }
+    const Y = v => v * 3;
+    G3.band.visible = m.bid != null; if (m.bid != null) { G3.band.scale.y = Math.max(0.02, Y(m.ask - m.bid)); G3.band.position.y = Y((m.bid + m.ask) / 2); }
+    const set = (o, v) => { o.visible = v != null; if (v != null) o.position.y = Y(v); };
+    set(G3.fair, m.fair); set(G3.model, m.model); set(G3.jev, jevOf(m.fc)); set(G3.claude, m.fc?.claude); set(G3.ob, m.our_bid); set(G3.oa, m.our_ask);
+  }
+
+  // ---- layers: focus / picking
+  const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  let focusT = null, focusCoin = null, focusId = null;
+  const tween = (toP, toT) => { focusT = { t0: performance.now(), fromP: camera.position.clone(), fromT: controls.target.clone(), toT, toP }; };
+  function focusRoute(r, instant) {
+    if (!G) return;
+    focusId = r.lvl === 3 ? r.id : null;
+    focusCoin = r.lvl === 2 ? r.coin : r.lvl === 3 ? G.data.get(r.id)?.coin : null;
+    for (const l of G.lobes) { l.el.classList.toggle("sel", l.coin === focusCoin); l.el.classList.toggle("dim", !!focusCoin && l.coin !== focusCoin); }
+    // layer 2 labels one expiry: the one picked, else the soonest with a live book (the side panel shows the same)
+    let pick = null;
+    if (r.lvl === 2) { const ms = [...G.data.values()].filter(m => m.coin === focusCoin).sort((p, q) => p.expiry - q.expiry);
+      const sel = ms.find(m => m.expiry === r.exp && m.venue === r.venue) || ms.find(m => mid(m) != null) || ms[0]; pick = sel ? sel.expiry + "|" + sel.venue : null; }
+    for (const s of G.slbl) { const m = G.data.get(s.id);
+      s.o.element.classList.toggle("dim", !(r.lvl === 2 && s.coin === focusCoin && m && m.expiry + "|" + m.venue === pick || r.lvl === 3 && s.id === focusId)); }
+    if (r.lvl !== 3 && G3) { scene.remove(G3.group); G3 = null; }
+    const i = focusCoin ? lobeOf(focusCoin) : -1;
+    if (r.lvl === 1 || i < 0) { tween(overview.pos.clone(), overview.target.clone()); controls.autoRotate = true; }
+    else if (r.lvl === 2) { const l = G.lobes[i]; tween(l.c.clone().addScaledVector(l.rh, 24).add(new THREE.Vector3(0, 10, 0)), l.c.clone()); controls.autoRotate = false; }
+    else { const l = G.lobes[i], n = G.strikeIdx.get(focusId); if (n == null) return; gauge(focusId);
+      const p = l.c.clone().add(G.home[n].off); tween(p.clone().addScaledVector(l.rh, 13).addScaledVector(l.th, 3).add(new THREE.Vector3(0, 4.5, 0)), p); controls.autoRotate = false; }
+    if (instant && focusT) { camera.position.copy(focusT.toP); controls.target.copy(focusT.toT); focusT = null; }
+    renderSpin();
+  }
+  canvas.addEventListener("click", e => { if (!G) return; const r = canvas.getBoundingClientRect(); ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ptr, camera);
+    const hn = ray.intersectObject(G.neurons)[0]; if (hn && hn.instanceId != null && G.home[hn.instanceId].id != null && focusCoin) { go(`#/m/${G.home[hn.instanceId].id}`); return; }
+    const hit = ray.intersectObjects(G.lobes.map(l => l.shell))[0]; if (hit) go(`#/coin/${encodeURIComponent(hit.object.userData.coin)}`); });
+  $("bOverview").onclick = () => go("#/");
+  const renderSpin = () => { $("bSpin").textContent = controls.autoRotate ? "Auto-rotate on" : "Auto-rotate off"; $("bSpin").classList.toggle("on", controls.autoRotate); };
+  $("bSpin").onclick = () => { controls.autoRotate = !controls.autoRotate; renderSpin(); }; renderSpin();
+  function resize() { const r = stage.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height);
+    renderer.setSize(w, h, false); composer.setSize(w, h); labelR.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(stage); resize();
+
+  // ---- per-frame update
+  let tickEMA = 0;
+  function frame(dt, t) {
+    if (!G) { composer.render(); labelR.render(scene, camera); return; }
+    const L = G.lobes.length; let actSum = 0;
+    for (let i = 0; i < L; i++) {
+      const l = G.lobes[i];
+      if (l.leanTarget) l.lean.lerp(l.leanTarget, 1 - Math.exp(-dt * 3));
+      l.agree += ((l.agreeT || 0) - l.agree) * (1 - Math.exp(-dt * 1.5));
+      l.act *= Math.exp(-dt * 0.6); actSum += l.act;
+      tmpC.copy(l.lean).lerp(C3.down, Math.min(1, l.stress * 0.7)); l.shell.material.uniforms.uCol.value.copy(tmpC);
+      l.shell.material.uniforms.uI.value = 0.12 + 0.3 * l.stress + 0.35 * l.act + 0.06 * Math.sin(t * 2 + i) + (l.coin === focusCoin ? 0.15 : 0);
+      l.hubMeshes.forEach((h, k) => { h.ring.lookAt(camera.position); h.ring.scale.setScalar(h.base * (1 + 0.12 * Math.sin(t * 3 + k + i)) * (k === 2 ? 1 + 0.5 * l.act : 1)); });
+      const le = G.lobeEdges[i], pick = () => G.edges[le[Math.floor(Math.random() * le.length)]];
+      l.accA += dt * (1.2 + 9 * l.act); while (l.accA > 1) { l.accA -= 1; const e = pick(); if (e) spawn(e[0], e[1], e[2], e[3], l.lean, { speed: 0.9, size: 1.1 }); }
+      let n = Math.min(4, l.tickQ); l.tickQ = 0; tickEMA += n;
+      while (n-- > 0) { const e = pick(); if (e) spawn(e[0], e[1], e[2], e[3], l.tickDir < 0 ? C3.down : C3.blue, { speed: 1.8, size: 1.3 }); }
+    }
+    tickEMA *= Math.exp(-dt * 1.2);
+    for (let n = 0; n < G.home.length; n++) {
+      const h = G.home[n], l = G.lobes[h.lobe], strike = h.id != null, a = strike ? 0.08 : 0.3;
+      const x = l.c.x + h.off.x + Math.sin(t * h.f + h.ph) * a, y = l.c.y + h.off.y + Math.sin(t * h.f * 0.8 + h.ph * 2) * a * 0.6, z = l.c.z + h.off.z + Math.cos(t * h.f + h.ph) * a;
+      G.neuronPos[n * 3] = x; G.neuronPos[n * 3 + 1] = y; G.neuronPos[n * 3 + 2] = z;
+      const pulseV = 0.55 + 0.45 * Math.sin(t * (1.5 + 3 * l.act) + h.ph);
+      let s;
+      if (strike) { const m = G.data.get(h.id), pm = mid(m), real = pm != null, sel = h.id === focusId;
+        s = (real ? 1.25 : 0.7) * (1 + 0.15 * pulseV) + h.flash + (sel ? 0.6 + 0.25 * Math.sin(t * 5) : 0);
+        probColor(real ? pm : m?.fair ?? m?.model, tmpC); tmpC.multiplyScalar((real ? 0.75 : 0.3) + 0.25 * pulseV + h.flash * 1.5 + (sel ? 0.5 : 0)); }
+      else { s = 0.75 + 0.5 * pulseV * (0.4 + l.act) + h.flash; tmpC.copy(l.lean).multiplyScalar(0.3 + 0.55 * pulseV * (0.35 + l.act) + h.flash * 1.6); }
+      if (focusId != null && l.coin === focusCoin && h.id !== focusId) { s *= strike ? 0.7 : 0.4; tmpC.multiplyScalar(strike ? 0.45 : 0.25); }   // layer 3: the chosen strike stands out
+      mtx.makeScale(s, s, s).setPosition(x, y, z); G.neurons.setMatrixAt(n, mtx); G.neurons.setColorAt(n, tmpC); h.flash *= Math.exp(-dt * 4);
+    }
+    G.neurons.instanceMatrix.needsUpdate = true; G.neurons.instanceColor.needsUpdate = true;
+    { const P = G.edgeLines.geometry.attributes.position.array, Cc = G.edgeLines.geometry.attributes.color.array;
+      G.edges.forEach((e, k) => { endPos(e[0], e[1], tmpV); endPos(e[2], e[3], tmpV2); P.set([tmpV.x, tmpV.y, tmpV.z, tmpV2.x, tmpV2.y, tmpV2.z], k * 6);
+        const l = G.lobes[e[5]];
+        tmpC.copy(e[4] === 1 ? HUBC[e[1] % 4] : e[4] === 6 ? C3.amber : l.lean).multiplyScalar(e[4] === 1 ? 0.35 : e[4] === 6 ? 0.12 + 0.3 * l.act : 0.22);
+        Cc.set([tmpC.r, tmpC.g, tmpC.b, tmpC.r, tmpC.g, tmpC.b], k * 6); });
+      G.edgeLines.geometry.attributes.position.needsUpdate = true; G.edgeLines.geometry.attributes.color.needsUpdate = true; }
+    { const P = G.bridgeLines.geometry.attributes.position.array, Cc = G.bridgeLines.geometry.attributes.color.array;
+      G.bridges.forEach((e, k) => { endPos(e[0], e[1], tmpV); endPos(e[2], e[3], tmpV2); P.set([tmpV.x, tmpV.y, tmpV.z, tmpV2.x, tmpV2.y, tmpV2.z], k * 6);
+        const col = e[4] === 2 ? C3.cyan : e[4] === 3 ? C3.purple : C3.blue; const w = e[4] === 4 ? 0.12 : 0.32;
+        Cc.set([col.r * w, col.g * w, col.b * w, col.r * w * 0.4, col.g * w * 0.4, col.b * w * 0.4], k * 6); });
+      G.bridgeLines.geometry.attributes.position.needsUpdate = true; G.bridgeLines.geometry.attributes.color.needsUpdate = true; }
+    { const P = G.bondLines.geometry.attributes.position.array, Cc = G.bondLines.geometry.attributes.color.array;
+      G.bonds.forEach((e, k) => { endPos(e[0], e[1], tmpV); endPos(e[2], e[3], tmpV2); P.set([tmpV.x, tmpV.y, tmpV.z, tmpV2.x, tmpV2.y, tmpV2.z], k * 6);
+        const w = 0.08 + 1.2 * G.lobes[e[5]].agree * (0.75 + 0.25 * Math.sin(t * 4 + k)); Cc.set([C3.cyan.r * w, C3.cyan.g * w, C3.cyan.b * w, C3.purple.r * w, C3.purple.g * w, C3.purple.b * w], k * 6); });
+      G.bondLines.geometry.attributes.position.needsUpdate = true; G.bondLines.geometry.attributes.color.needsUpdate = true; }
+    for (let k = 0; k < G.pool.length; k++) { const p = G.pool[k];
+      if (!p.live) { if (G.ppos[k * 3] !== 9999) { G.ppos[k * 3] = 9999; G.psz[k] = 0; } continue; }
+      p.t += dt * p.speed; if (p.t >= 1) { p.live = false; if (p.kb === 0 && G.home[p.ib]) G.home[p.ib].flash = Math.min(1, G.home[p.ib].flash + 0.5); G.ppos[k * 3] = 9999; G.psz[k] = 0; continue; }
+      endPos(p.ka, p.ia, tmpV); endPos(p.kb, p.ib, tmpV2); tmpV.lerp(tmpV2, p.t);
+      G.ppos[k * 3] = tmpV.x; G.ppos[k * 3 + 1] = tmpV.y; G.ppos[k * 3 + 2] = tmpV.z; G.pcol[k * 3] = p.col.r; G.pcol[k * 3 + 1] = p.col.g; G.pcol[k * 3 + 2] = p.col.b;
+      G.psz[k] = p.size * (0.85 + 0.3 * Math.sin(p.t * 12)); }
+    const pa = G.photons.geometry.attributes; pa.position.needsUpdate = true; pa.color.needsUpdate = true; pa.size.needsUpdate = true;
+    for (const r of G.rings) { if (!r.live) continue; r.t += dt / r.life; if (r.t >= 1) { r.live = false; r.m.visible = false; continue; }
+      const e = 1 - Math.pow(1 - r.t, 3); r.m.position.copy(r.pos); r.m.lookAt(camera.position); r.m.scale.setScalar(r.start + (r.maxR - r.start) * e); r.m.material.opacity = r.a0 * (1 - r.t); }
+    for (const [key, s] of G.sats) { const l = G.lobes[s.lobe]; s.ang += dt * 0.9;
+      if (s.dying) { s.dying += dt * 1.4; s.m.position.lerp(new THREE.Vector3(0, 0, 0), Math.min(1, s.dying * 0.25)); s.m.scale.setScalar(Math.max(0.01, 1 - s.dying)); if (s.dying >= 1) { scene.remove(s.m); G.sats.delete(key); } continue; }
+      s.m.position.set(l.c.x + Math.cos(s.ang) * s.r, l.c.y + Math.sin(s.ang * 1.3) * s.tilt * 4, l.c.z + Math.sin(s.ang) * s.r); s.m.rotation.x += dt * 1.5; s.m.rotation.y += dt * 2; }
+    // core: colour = the maker's P&L, heartbeat = trading activity across all lobes
+    const pnl = G.pnl || 0; tmpC.copy(C3.cyan).lerp(pnl >= 0 ? C3.up : C3.down, Math.min(0.8, Math.abs(pnl) / 60)); coreUni.uColA.value.lerp(tmpC, 1 - Math.exp(-dt * 2));
+    coreUni.uTime.value += dt * (0.6 + Math.min(2, tickEMA / 25)); coreUni.uAmp.value = 0.35 + Math.min(0.9, tickEMA / 40) + 0.4 * Math.min(1, actSum / 3);
+    core.scale.setScalar(1 + 0.035 * Math.sin(t * (2.2 + actSum)));
+    shell.rotation.y += dt * 0.12; shell.rotation.x += dt * 0.05; brain.rotation.y -= dt * 0.04;
+    bloomKick = Math.max(0, bloomKick - dt * 1.2); bloom.strength = BLOOM + bloomKick * 1.0;
+    if (focusT) { const k = Math.min(1, (performance.now() - focusT.t0) / 1200), e = 1 - Math.pow(1 - k, 3);
+      camera.position.lerpVectors(focusT.fromP, focusT.toP, e); controls.target.lerpVectors(focusT.fromT, focusT.toT, e); if (k >= 1) focusT = null; }
+    controls.update(dt); composer.render(); labelR.render(scene, camera);
+  }
+  api.frame = frame; api.focusRoute = focusRoute;
+  window.__cortex = { camera, controls, get G() { return G; } };
+  return api;
+}
+
+try { world = makeWorld(); } catch (e) { $("nogl").hidden = false; $("nogl").textContent = "3D view unavailable (WebGL): " + e.message + " · the panels on the right still work"; }
+let last = performance.now(), fpsN = 0, fpsT = 0;
+const JEVSEEN = {};
+function loop(now) { const dt = Math.min(0.05, (now - last) / 1000); last = now; fxFrame(dt); pnlFrame(); liveFrame(); fpsN++; fpsT += dt; if (fpsT >= 1) { setText($("fps"), fpsN + " fps"); fpsN = 0; fpsT = 0; }
+  try { world?.frame(dt, now / 1000); drawMini(); } catch (e) { console.error(e); } requestAnimationFrame(loop); }
+
+// ===================================================================== 2D helpers (mini chart, side panels)
+function fit2d(cv) { const r = cv.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); } const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h); return { g, w, h }; }
+function axes(g, w, h, pad, lo, hi, fmt, n = 4) { g.font = "10px " + K.mono; g.fillStyle = K.muted; g.strokeStyle = "rgba(56,189,248,.08)"; g.lineWidth = 1; g.textAlign = "right";
+  for (let i = 0; i <= n; i++) { const v = lo + (hi - lo) * i / n, y = pad.t + (h - pad.t - pad.b) * (1 - i / n); g.beginPath(); g.moveTo(pad.l, y); g.lineTo(w - pad.r, y); g.stroke(); g.fillText(fmt(v), pad.l - 6, y + 3); } }
+let MINI = { kind: null }, miniAt = 0;
+function drawMini() {
+  if (performance.now() - miniAt < 250) return; miniAt = performance.now();
+  const { g, w, h } = fit2d(miniCanvas());
+  if (MINI.kind === "curve" && MINI.rows?.length) return drawCurve(g, w, h, MINI.rows, MINI.spot);
+  if (MINI.kind === "market" && MINI.M) return drawMarket(g, w, h, MINI.M);
+  if (MINI.kind === "equity" && MINI.r) return drawEquity(g, w, h, MINI.r);
+  g.fillStyle = K.muted; g.font = "11px " + K.mono; g.fillText(MINI.empty || "", 14, 22);
+}
+function drawEquity(g, w, h, r) {
+  const pts = r.equity || [], pad = { l: 58, r: 12, t: 8, b: 18 };
+  if (pts.length < 2) { g.fillStyle = K.muted; g.font = "11px " + K.mono; g.fillText("not enough points yet", 14, 22); return; }
+  const ys = pts.map(p => p[1]), lo0 = Math.min(...ys, 10000), hi0 = Math.max(...ys, 10000), sp = Math.max(1, hi0 - lo0), lo = lo0 - sp * .12, hi = hi0 + sp * .12;
+  const x = t => pad.l + (w - pad.l - pad.r) * (t - pts[0][0]) / Math.max(1, pts.at(-1)[0] - pts[0][0]), y = v => pad.t + (h - pad.t - pad.b) * (1 - (v - lo) / (hi - lo));
+  axes(g, w, h, pad, lo, hi, v => "$" + Math.round(v).toLocaleString());
+  g.setLineDash([3, 3]); g.strokeStyle = K.muted; g.beginPath(); g.moveTo(pad.l, y(10000)); g.lineTo(w - pad.r, y(10000)); g.stroke(); g.setLineDash([]);
+  const col = r.pnl >= 0 ? K.up : K.down; g.strokeStyle = col; g.lineWidth = 1.7; g.shadowColor = col; g.shadowBlur = 8; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(x(p[0]), y(p[1])) : g.moveTo(x(p[0]), y(p[1]))); g.stroke(); g.shadowBlur = 0;
+  g.fillStyle = K.muted; g.font = "10px " + K.mono; g.textAlign = "left"; g.fillText(hhmm(pts[0][0]), pad.l, h - 4); g.textAlign = "right"; g.fillText(hhmm(pts.at(-1)[0]), w - pad.r, h - 4);
+}
+function drawCurve(g, w, h, rows, spot) {
+  const pad = { l: 40, r: 12, t: 8, b: 20 }, ks = rows.map(r => r.strike).concat(spot ? [spot] : []), klo = Math.min(...ks), khi = Math.max(...ks), ksp = Math.max(khi - klo, klo * 0.001);
+  const x = k => pad.l + (w - pad.l - pad.r) * ((k - klo + ksp * .06) / (ksp * 1.12)), y = p => pad.t + (h - pad.t - pad.b) * (1 - p);
+  axes(g, w, h, pad, 0, 1, v => Math.round(v * 100) + "%");
+  if (spot) { g.setLineDash([4, 4]); g.strokeStyle = K.text2; g.beginPath(); g.moveTo(x(spot), pad.t); g.lineTo(x(spot), h - pad.b); g.stroke(); g.setLineDash([]);
+    g.fillStyle = K.text2; g.font = "10px " + K.mono; g.textAlign = "center"; g.fillText("spot " + fp(spot), x(spot), h - 5); }
+  const line = (get, col, dash, wd = 1.6) => { const pts = rows.filter(r => get(r) != null); if (!pts.length) return; g.strokeStyle = col; g.lineWidth = wd; g.setLineDash(dash || []); g.shadowColor = col; g.shadowBlur = 6;
+    g.beginPath(); pts.forEach((r, i) => i ? g.lineTo(x(r.strike), y(get(r))) : g.moveTo(x(r.strike), y(get(r)))); g.stroke(); g.setLineDash([]); g.shadowBlur = 0;
+    pts.forEach(r => { g.fillStyle = col; g.beginPath(); g.arc(x(r.strike), y(get(r)), 2.6, 0, 7); g.fill(); }); };
+  line(r => r.model, K.purple, [4, 3]); line(r => jevOf(r.fc), K.white, [2, 3], 1.2); line(r => r.fair, K.cyan);
+  rows.forEach(r => { if (!r.real) return; const X = x(r.strike); g.strokeStyle = K.amber; g.lineWidth = 5; g.globalAlpha = .75; g.beginPath(); g.moveTo(X, y(r.bid)); g.lineTo(X, y(r.ask)); g.stroke(); g.globalAlpha = 1;
+    for (const k of ["our_bid", "our_ask"]) if (r[k] != null) { g.strokeStyle = K.green; g.lineWidth = 2; g.beginPath(); g.moveTo(X - 7, y(r[k])); g.lineTo(X + 7, y(r[k])); g.stroke(); } });
+}
+function drawMarket(g, w, h, M) {
+  const H = M.history, pad = { l: 40, r: 12, t: 8, b: 18 }, trades = M.trades.map(t => [t.et / 1000, t.p, t.sd]);
+  const tmin = H.length ? H[0][0] : (trades.length ? Math.min(...trades.map(t => t[0])) : nowS() - 600), tmax = Math.max(nowS(), H.length ? H.at(-1)[0] : 0);
+  const vals = H.flatMap(r => [r[1], r[2], r[3], r[4], r[5], r[6]]).filter(v => v != null && v > 0.002 && v < 0.998).concat(trades.filter(t => t[0] >= tmin).map(t => t[1]));
+  let lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 1; const sp = Math.max(.04, hi - lo); lo = Math.max(0, lo - sp * .15); hi = Math.min(1, hi + sp * .15);
+  const x = t => pad.l + (w - pad.l - pad.r) * (t - tmin) / Math.max(1, tmax - tmin), y = p => pad.t + (h - pad.t - pad.b) * (1 - (p - lo) / (hi - lo));
+  axes(g, w, h, pad, lo, hi, v => (v * 100).toFixed(0) + "¢");
+  const real = r => r[1] != null && r[2] != null && r[2] - r[1] <= .5;
+  g.fillStyle = "rgba(251,191,36,.17)"; for (let i = 1; i < H.length; i++) { const a = H[i - 1], c = H[i]; if (!real(a)) continue; g.fillRect(x(a[0]), y(a[2]), Math.max(1, x(c[0]) - x(a[0])), Math.max(1, y(a[1]) - y(a[2]))); }
+  const path = (col, idx, dash, wd = 1.5) => { g.strokeStyle = col; g.lineWidth = wd; g.setLineDash(dash || []); g.beginPath(); let on = false;
+    H.forEach(r => { const v = r[idx]; if (v == null) { on = false; return; } on ? g.lineTo(x(r[0]), y(v)) : g.moveTo(x(r[0]), y(v)); on = true; }); g.stroke(); g.setLineDash([]); };
+  path(K.purple, 4, [4, 3]); g.shadowColor = K.cyan; g.shadowBlur = 6; path(K.cyan, 3, null, 1.8); g.shadowBlur = 0; path(K.green, 5, [2, 2], 1.1); path(K.green, 6, [2, 2], 1.1);
+  const jv = jevOf(M.fc); if (jv != null) { g.strokeStyle = K.white; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(pad.l, y(jv)); g.lineTo(w - pad.r, y(jv)); g.stroke(); g.setLineDash([]);
+    g.fillStyle = K.white; g.font = "9.5px " + K.mono; g.textAlign = "right"; g.fillText("jev " + cents(jv), w - pad.r - 2, y(jv) - 3); }
+  trades.forEach(([t, p, sd]) => { if (t < tmin) return; g.fillStyle = sd === "B" ? K.up : K.down; g.shadowColor = g.fillStyle; g.shadowBlur = 8; g.beginPath(); g.arc(x(t), y(p), 3.2, 0, 7); g.fill(); g.shadowBlur = 0; });
+  (M.fills || []).forEach(f => { if (f.ts < tmin) return; g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.beginPath(); g.arc(x(f.ts), y(f.px), 5, 0, 7); g.stroke(); });
+  g.fillStyle = K.muted; g.font = "10px " + K.mono; g.textAlign = "left"; g.fillText(hhmm(tmin), pad.l, h - 4); g.textAlign = "right"; g.fillText(hhmm(tmax), w - pad.r, h - 4);
+}
+
+// ===================================================================== side panel per layer
+let sideTimer = null, BT = null, btSel = null;
+async function sideTick(fresh) {
+  clearTimeout(sideTimer);
+  try { if (route.lvl === 1) await side1(fresh); else if (route.lvl === 2) await side2(); else await side3(); }
+  catch (e) { setHTML($("side"), `<div class="blk"><div class="empty">Could not load: ${esc(e.message)}</div></div>`); }
+  sideTimer = setTimeout(sideTick, route.lvl === 1 ? 3000 : 2000);
+}
+const kpi = (l, v, s, c = "") => `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`;
+
+let SIZE_URL = "/api/hip4mm/size";
+async function side1() {
+  const [sn, maker, ov] = await Promise.all([get("/api/hip4sniper").catch(() => ({ enabled: false })), get("/api/hip4mm"), get("/api/hip4/overview")]);
+  const mm = sn.enabled !== false ? sn : maker;             // the main paper book: the sniper when it runs
+  SIZE_URL = sn.enabled !== false ? "/api/hip4sniper/size" : "/api/hip4mm/size";
+  if (!$("s1k")) $("side").innerHTML = `
+    <div class="blk" style="border-left:3px solid var(--amber)"><h3><span style="color:var(--amber)">Live pilot · real money</span> <em id="plMode"></em></h3>
+      <div id="plSize" style="margin-bottom:8px"></div><div id="plBody"></div></div>
+    <div class="blk" id="labBlk" hidden style="border-left:3px solid var(--cyan)"><h3><span style="color:var(--cyan)">Strategy tournament · zero risk</span> <em id="labMeta"></em></h3>
+      <div id="labBody"></div></div>
+    <div class="blk"><h3><span id="s1name">Sniper</span> <em id="s1st"></em></h3><div class="kpis" id="s1k"></div>
+      <div class="note" id="s1rules"></div></div>
+    <div class="blk" id="s1maker"><h3>Market maker <em id="s1mst"></em></h3><div class="kv" id="s1mk"></div></div>
+    <div class="blk"><h3>Go-live readiness <em id="glMeta"></em></h3>
+      <div class="glbar"><i id="glFill"></i></div>
+      <div id="glChecks"></div><div id="glConf" style="margin-top:8px"></div>
+      <div class="note" id="glNote"></div></div>
+    <div class="blk"><h3>Shadow execution <em id="shMeta"></em></h3><div class="kv" id="shKv"></div>
+      <div class="tbl-wrap" style="margin-top:8px;max-height:170px;overflow:auto"><table id="shAct"></table></div></div>
+    <div class="blk"><h3>Bet size <em id="szEff"></em></h3>
+      <div id="szBtns" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
+      <div class="line" id="szNote" style="font-size:10.5px"></div></div>
+    <div class="blk"><h3>Underlyings <em>click to enter layer 2</em></h3><div id="s1c"></div></div>
+    <div class="blk"><h3>Backtest lab <em id="btSpan"></em></h3><div id="btForm"></div><div class="prog" id="btProg" hidden><i></i></div><div class="note" id="btMsg"></div>
+      <div class="tbl-wrap" style="margin-top:10px"><table id="btRes"></table></div><div class="note" id="btDetail"></div></div>
+    <div class="blk"><h3>Recent fills <em id="s1fm"></em></h3><div class="tbl-wrap"><table id="s1f"></table></div></div>`;
+  const st = mm.stats || {}, sp = mm.snipe;
+  setText($("s1name"), sp ? "Sniper · PAPER (simulation, the yardstick)" : "Market maker · paper");
+  setText($("s1st"), mm.enabled === false ? "off" : `${mm.killed ? "STOPPED" : mm.status} · ${mm.ws?.subs ?? 0} books`);
+  setHTML($("s1k"), mm.enabled === false ? kpi("Book", "off", "enable hip4_sniper") :
+    kpi("P&amp;L", usd(mm.pnl), `dd ${((mm.drawdown || 0) * 100).toFixed(1)}%`, cls(mm.pnl)) + kpi("Open risk", "$" + (mm.risk || 0).toFixed(0), `cap $${Math.round(mm.size?.max_risk_usd ?? 0).toLocaleString()}`)
+    + (sp ? kpi("Snipes", `${sp.filled}`, `${sp.signals} signals · ${sp.missed} gone before we arrived`)
+          : kpi("Fills", st.fills ?? 0, `${st.contracts ?? 0} contracts`))
+    + kpi(sp ? "Edge taken" : "Edge at fill", scents(st.avg_edge), sp ? "below / above model fair" : "spread captured", cls(st.avg_edge))
+    + kpi("60 s markout", scents(st.avg_markout), `n=${st.markouts ?? 0} · − = the market was right`, cls(st.avg_markout)) + kpi("Settled", usd(st.settled_pnl), `${st.settled_wins ?? 0}/${st.settled ?? 0} won`, cls(st.settled_pnl)));
+  const R = sp?.regime, rCol = !R ? K.muted : R.status === "turned" ? K.red : R.status === "watch" ? K.amber : R.status === "ok" ? K.green : K.muted;
+  setHTML($("s1rules"), sp ? `Rules fixed before any held-out data: ≥ <b>${(sp.edge * 100).toFixed(0)}¢</b> past model fair · ≤ <b>${sp.max_tte_min}</b> min left · <b>${sp.latency_ms}</b> ms latency · $10 minimum · held to settlement`
+    + (R ? `<div style="margin-top:6px;padding:6px 8px;border-left:3px solid ${rCol};background:rgba(255,255,255,.03)"><b style="color:${rCol}">DIRECTION ALARM · ${R.status === "turned" ? "TURNED — sells are losing to the drift, rethink sell-only" : R.status === "watch" ? "WATCH" : R.status === "ok" ? "OK — the sell edge is holding" : "collecting"}</b>
+       <span class="t2"> · last ${R.markets}${R.markets < R.need ? "/" + R.need : ""} BET-NO markets ran <b>${R.surprise_c == null ? "—" : (R.surprise_c > 0 ? "+" : "") + R.surprise_c.toFixed(1) + "¢"}</b>${R.se_c != null ? ` ±${R.se_c.toFixed(1)}¢ (t ${R.t > 0 ? "+" : ""}${R.t.toFixed(1)})` : ""} vs our model · alarm at −5¢ AND t ≤ −2 (real, not luck) · ${R.won}/${R.markets} won · ${usd(R.pnl)}</span></div>`
+       + `<div style="margin-top:4px;padding:6px 8px;border-left:3px solid ${R.size_up_ok ? K.green : K.amber};background:rgba(255,255,255,.03)"><b style="color:${R.size_up_ok ? K.green : K.amber}">SIZE GAUGE · ${R.size_up_ok ? "EDGE IS PAYING — 2× is reasonable" : "STAY AT 1× — edge not paying enough yet"}</b>
+       <span class="t2"> · paper's last ${R.edge_markets} bet-NO markets earned <b>${R.edge_c == null ? "—" : (R.edge_c > 0 ? "+" : "") + R.edge_c.toFixed(1) + "¢"}</b> per contract after fees · go above 1× only at ≥ +10¢ over 30+ markets (research: ≥ +14¢ stretches made the live bot money, ~0¢ was flat)</span></div>` : "") : "");
+  $("s1maker").hidden = !(sn.enabled !== false && maker.enabled !== false);
+  if (maker.enabled !== false) { const ms = maker.stats || {};
+    setText($("s1mst"), maker.quoting === false ? "PAUSED · positions still settle" : maker.status);
+    setHTML($("s1mk"), `<span>P&amp;L</span><b class="${cls(maker.pnl)}">${usd(maker.pnl)}</b><span>Settled</span><b>${usd(ms.settled_pnl)} <span class="t2">${ms.settled_wins}/${ms.settled} won</span></b><span>Open positions</span><b>${(maker.open || []).length}</b>`); }
+  setText($("s1fm"), mm.name || "");
+  renderSize(mm.size);
+  await Promise.all([renderGate(), renderShadow(), renderPilot(), renderLab()]);
+  setHTML($("s1c"), Object.entries(ov.coins).map(([c, x]) => `<div class="coinrow" data-c="${esc(c)}"><span class="n" style="color:${c.includes(":") ? K.amber : K.cyan}">${esc(c.replace("xyz:", ""))}${c.includes(":") ? ' <span class="muted" style="font-weight:500">xyz</span>' : ""}</span><span class="p">${fp(x.spot)}</span>
+    <span class="s">${x.markets} markets · ${x.live_books} live · next ${x.next[0] ? hhmm(x.next[0].expiry) + " " + esc(x.next[0].venue) + " (" + dur(x.next[0].tte_min) + ")" : "—"}${x.positions ? ` · <span class="up">${x.positions} pos</span>` : ""}</span></div>`).join(""));
+  $("s1c").querySelectorAll(".coinrow").forEach(r => r.onclick = () => go(`#/coin/${encodeURIComponent(r.dataset.c)}`));
+  setHTML($("s1f"), !(mm.fills || []).length ? `<tr><td class="empty">no fills yet</td></tr>` : `<tr><th>time</th><th></th><th>market</th><th>qty</th><th>px</th><th>edge</th><th>60s</th></tr>` +
+    mm.fills.slice(0, 10).map(f => `<tr class="click" data-id="${f.id}"><td>${hhmmss(f.ts)}</td><td><span class="badge ${f.side > 0 ? "b" : "s"}" title="${f.side > 0 ? "bought Yes: wins if the price ends ABOVE the strike" : "sold Yes = bet No: wins if the price ends BELOW the strike"}">${f.side > 0 ? "BET YES" : "BET NO"}</span></td><td>${esc(f.coin)} &gt;${fp(f.strike)}</td><td>${f.qty}</td><td>${cents(f.px)}</td><td class="${cls(f.edge)}">${scents(f.edge)}</td><td class="${cls(f.markout)}">${f.markout == null ? "…" : scents(f.markout)}</td></tr>`).join(""));
+  $("s1f").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => go(`#/m/${tr.dataset.id}`));
+  await backtestPanel();
+}
+async function renderGate() {
+  const G = await get("/api/golive").catch(() => null); if (!G || G.enabled === false) { setHTML($("glChecks"), `<div class="empty">gate off</div>`); return; }
+  const pct = G.passed / G.total; $("glFill").style.width = Math.round(pct * 100) + "%";
+  setHTML($("glMeta"), G.ready ? `<span class="up">READY · ${G.passed}/${G.total}</span>` : `${G.passed}/${G.total} passed`);
+  setHTML($("glChecks"), G.checks.map(c => `<div class="gl"><span class="ic ${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "○"}</span><span>${esc(c.label)}</span><span class="d">${esc(c.detail)}</span>
+    <span class="mini-bar"><u style="width:${Math.round(c.progress * 100)}%;background:${c.ok ? K.green : K.cyan}"></u></span></div>`).join(""));
+  if (!$("glConf")._built) { $("glConf")._built = true;
+    $("glConf").innerHTML = `<div class="line" style="margin:0 0 4px;font-size:10px;letter-spacing:1px;color:${K.muted}">YOUR CONFIRMATIONS (only you can tick these)</div>` +
+      G.confirmations.map(c => `<label class="cf"><input type="checkbox" data-k="${c.key}"><span>${esc(c.label)}</span></label>`).join("");
+    $("glConf").querySelectorAll("input").forEach(i => i.onchange = async () => {
+      await fetch("/api/golive/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: i.dataset.k, value: i.checked }) }); renderGate(); }); }
+  for (const c of G.confirmations) { const i = $("glConf").querySelector(`input[data-k="${c.key}"]`); if (i && document.activeElement !== i) i.checked = c.ok; }
+  setText($("glNote"), G.note);
+}
+function dryTable(D) {         // the zero-risk test's scoreboard (dry run, or alongside live)
+  if (!D) return "";
+  return `<div style="margin:0 0 8px;padding:8px;border-left:3px solid ${K.amber};background:rgba(255,255,255,.03)">
+      <b class="amber">ZERO-RISK TEST${D.alongside_live ? " · alongside live" : ""}</b> <span class="t2">· since ${hhmm(D.since)} · ${D.sent} would-be orders (${D.refused} over the caps) · reaction ${D.median_reaction_ms ?? "—"} ms after the exchange's price · send overhead ${D.median_overhead_ms ?? "—"} ms</span>
+      <div class="tbl-wrap" style="margin-top:6px"><table><tr><th>if the price had to survive</th><th>would have filled</th><th>settled markets</th><th>won</th><th>net after fees</th></tr>`
+    + Object.entries(D.margins).map(([mg, x]) => `<tr><td>${mg === "0" ? "just our arrival (optimistic)" : "+" + mg + " ms (cautious)"}</td><td>${x.filled}${x.fill_rate != null ? ` (${Math.round(x.fill_rate * 100)}%)` : ""}</td><td>${x.settled_markets}</td><td>${x.won}</td><td class="${cls(x.pnl)}">${usd(x.pnl)}</td></tr>`).join("")
+    + `</table></div><div class="t2" style="font-size:10.5px;margin-top:4px">No money: live sizing on a $100 test budget at 1×. About 30 settled markets with a steady positive net (cautious row) = a real edge from Tokyo.</div></div>`;
+}
+async function renderLab() {   // the zero-risk tournament and the autopilot's choice (local, or the Tokyo server's)
+  const A = await get("/api/shadowlab").catch(() => null);
+  $("labBlk").hidden = !(A && A.enabled);
+  if (!A || !A.enabled) return;
+  const ap = A.autopilot || {};
+  const why = Object.fromEntries((ap.scores || []).map(s => [s.name, s.why || ""]));
+  const fr = A.fill_rule || {};
+  const frTxt = fr.name ? ` · <span title="${esc(fr.rule || "")}">fills: ${esc(fr.name)} since ${new Date(fr.since * 1000).toISOString().slice(5, 16).replace("T", " ")} UTC (evidence restarted then)</span>` : "";
+  setHTML($("labMeta"), `${A.where ? esc(A.where) + " · " : ""}since ${hhmm(A.since)} · model bias ${A.bias_c > 0 ? "+" : ""}${A.bias_c}¢ (${A.bias_markets} mkts)${frTxt}`);
+  const sel = ap.enabled ? (ap.selected ? `<b class="up">LIVE FOLLOWS: ${esc(ap.selected)}</b>` : `<b class="amber">LIVE SITS OUT</b>`) : `<span class="t2">autopilot off</span>`;
+  setHTML($("labBody"), `<div style="margin-bottom:6px">${sel} <span class="t2">· ${esc(ap.why || "")}</span></div>
+    <div class="tbl-wrap"><table><tr><th>strategy</th><th>side · edge · window</th><th>fills</th><th>markets</th><th>won</th><th>net</th><th>¢/ct</th><th>24 h</th><th title="paper-betting score: starts at 1×, live needs the bar">evidence</th></tr>`
+    + (A.board || []).map(r => `<tr${ap.selected === r.name ? ' style="background:rgba(80,220,140,.08)"' : ""}><td>${esc(r.name)}${r.selfcal ? ' <span class="t2">self-cal</span>' : ""}</td>
+       <td class="t2">${esc(r.sides)} · ${Math.round(r.edge * 100)}¢ · ${r.min_tte}-${r.max_tte} min</td><td>${r.fill_rate != null ? Math.round(r.fill_rate * 100) + "%" : "—"}</td>
+       <td>${r.markets}</td><td>${r.won}</td><td class="${cls(r.net)}">${usd(r.net)}</td><td class="${cls(r.c_per_contract)}">${r.c_per_contract ?? "—"}</td><td class="${cls(r.last24h)}">${usd(r.last24h)}</td>
+       <td title="${esc(`${r.outcomes ?? 0} outcomes · ${r.rising ?? 0} rising / ${r.falling ?? 0} falling markets${why[r.name] ? " · " + why[r.name] : ""}`)}">${r.score != null ? (+r.score).toFixed(2) + "×" : "—"}<span class="t2"> / ${ap.bar ?? "—"}×</span></td></tr>`).join("")
+    + `</table></div><div class="note">Each strategy: live rules ($10 orders, $30/market, $100 budget), scored on real fills and real settlements, nothing sent. Rule: ${esc(ap.rule || "")}.</div>`);
+}
+async function renderPilot() {
+  const P0 = await get("/api/pilot").catch(() => null); if (!P0) return;
+  const RM = P0.remote;
+  if (RM) {                     // live runs on another Helix (Tokyo): show it read-only; its size buttons live on ITS page
+    const ok = !!RM.mode;
+    setHTML($("plMode"), ok ? `<span class="up" style="text-shadow:0 0 10px var(--green)">● ${esc(RM.mode)} · ${esc(RM.where)}</span>` : `<span class="amber">${esc(RM.where)}: not reachable</span>`);
+    setHTML($("plSize"), `<div class="line" style="margin:0 0 6px;font-size:10.5px">Live trading runs on the <b>${esc(RM.where)}</b>. This PC is paper-only (two live bots would double every bet). Change the live bet size on <a href="${esc(RM.page)}" target="_blank" rel="noopener">its page ↗</a>.</div>`);
+    setHTML($("plBody"), !ok ? `<div class="note">${esc(RM.error || "")}</div>` : dryTable(RM.dry) +
+      `<div class="kv"><span>Account</span><b>$${RM.live_equity ?? "—"} <span class="t2">(cash $${RM.wallet_usdc ?? "—"} + open bets $${RM.open_value ?? 0})</span></b>
+       <span>All-time</span><b class="${cls(RM.live_pnl_total)}">${usd(RM.live_pnl_total)}</b><span>Today</span><b class="${cls(RM.realized_today)}">${usd(RM.realized_today)}</b>
+       <span>Size</span><b>${RM.size?.multiplier ?? "—"}×</b><span>Open</span><b>${(RM.open || []).length} markets · $${RM.open_cost ?? 0}</b></div>`
+      + ((RM.open || []).length ? `<div class="tbl-wrap" style="margin-top:8px"><table><tr><th>market</th><th>bet</th><th>contracts</th><th>cost</th><th>expires</th></tr>` +
+        RM.open.map(o => `<tr><td>${esc(o.underlying || "")} &gt;${fp(o.strike)}</td><td>${o.no ? "NO" : "YES"}</td><td>${o.no || o.yes}</td><td>$${(+o.cost).toFixed(2)}</td><td>${hhmm(o.expiry)}</td></tr>`).join("") + `</table></div>` : "")
+      + `<div class="note">Read-only view of the ${esc(RM.where)}. Full page: <a href="${esc(RM.page)}" target="_blank" rel="noopener">${esc(RM.page)}</a></div>`);
+    return;
+  }
+  const P = P0;
+  const live = P.mode === "LIVE";
+  const D = P.dry;
+  setHTML($("plMode"), (P.mode === "DRY RUN" ? `<span class="amber">● DRY RUN — no orders are sent</span>` : live ? `<span class="up" style="text-shadow:0 0 10px var(--green)">● LIVE</span>` : `<span class="muted">OFF</span>`)
+    + (P.gate_overridden ? ` <span class="amber">· gate overridden by you</span>` : ""));
+  const L = P.limits || {}, Z = P.size;
+  if (Z && !$("plSzBtns")) {
+    $("plSize").innerHTML = `<div class="line" style="margin:0 0 6px;font-size:10px;letter-spacing:1px;color:${K.amber}">LIVE BET SIZE · REAL MONEY</div>
+      <div id="plSzBtns" style="display:flex;gap:6px;flex-wrap:wrap">${[1, 2, 3, 5].filter(v => v <= Z.max_multiplier).map(v => `<button class="btn" type="button" data-m="${v}">${v}×</button>`).join("")}</div>
+      <div class="line" id="plSzNote" style="font-size:10.5px"></div>`;
+    $("plSzBtns").querySelectorAll("button").forEach(b => b.onclick = async () => {
+      const m = +b.dataset.m;
+      const S = $("plSize")._Z || Z, perX = S.multiplier ? 1 / S.multiplier : 1, C = S.compound;   // the LATEST sizes
+      const open1 = C?.enabled && C.account ? C.open * C.account : S.max_open_usd * perX;            // 1x, before the cap
+      if (!confirm(`Set the LIVE (real money) bet size to ${m}×?\n\nAbout $${Math.max(10, S.order_usd * perX * m).toFixed(0)} per order, up to $${Math.min(open1 * m, S.capital_usd).toFixed(0)} open at once, ${S.daily_loss_usd > 0 ? "stops for the day after -$" + (S.daily_loss_usd * perX * m).toFixed(0) : "no daily stop"}.`)) return;
+      const r = await fetch("/api/pilot/size", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ multiplier: m }) });
+      const j = await r.json().catch(() => ({})); if (!j.ok) setText($("plSzNote"), j.error || "could not change the size"); renderPilot(); });
+  }
+  if (Z) { $("plSize")._Z = Z; $("plSzBtns").querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.m === Z.multiplier));
+    setHTML($("plSzNote"), `<b>${Z.multiplier}×</b> · ~$${Z.order_usd} per order · up to $${Z.max_open_usd} open · ${Z.daily_loss_usd > 0 ? "daily stop −$" + Z.daily_loss_usd : "no daily stop"} · capital cap $${Z.capital_usd}`
+      + (Z.compound?.enabled ? `<br><b class="up">COMPOUNDING</b> on a $${Z.compound.account ?? "…"} account: ${Math.round(Z.compound.open * 100)}% open · ${Math.round(Z.compound.market * 100)}% per market · ${Z.compound.daily_loss > 0 ? Math.round(Z.compound.daily_loss * 100) + "% daily stop" : "no daily stop"} — grows with wins, shrinks after losses` : "")); }
+  const dryHtml = dryTable(D);
+  setHTML($("plBody"), dryHtml + (live || P.mode === "DRY RUN" ? "" : `<div class="line" style="margin:0 0 6px;font-size:10.5px">Sends nothing until every item below is cleared:</div>` +
+      (P.blockers || []).map(b => `<div class="gl" style="grid-template-columns:16px 1fr"><span class="ic no">○</span><span>${esc(b)}</span></div>`).join(""))
+    + (L.capital_usd ? `<div class="kv" style="margin-top:8px"><span>Pilot capital</span><b>$${L.capital_usd}</b><span>Max order / open</span><b>$${L.max_order_usd} / $${L.max_open_usd}</b>
+       <span>Daily loss stop</span><b>${L.daily_loss_usd > 0 ? "−$" + L.daily_loss_usd : "off"} <span class="t2">(today ${usd(P.realized_today)})</span></b><span>Size</span><b>${esc(String(L.contracts))}</b>
+       <span>Per market / long-dated</span><b>$${L.max_market_usd ?? "—"} <span class="t2">/ $${P.long_cost ?? 0} of $${L.long_budget_usd ?? "—"} in &gt;${L.long_tte_min ?? 60} min markets</span></b>
+       ${P.speed ? `<span>Speed</span><b>${P.speed.fire_on === "signal" ? "sends at the signal" : "after the paper fill"} <span class="t2">· slip ${cents(P.speed.slip)} · ≥ ${cents(P.speed.min_edge)} edge</span></b>` : ""}
+       <span>Open</span><b>${(P.open || []).length} markets · $${P.open_cost}</b>${P.halted ? `<span>Halted</span><b class="down">${esc(P.halt_reason)}</b>` : ""}</div>` : "")
+    + ((P.orders || []).length ? `<div class="tbl-wrap" style="margin-top:8px;max-height:150px;overflow:auto"><table><tr><th>time</th><th>book</th><th>bet</th><th>px</th><th>sz</th><th>result</th></tr>` +
+       P.orders.slice(0, 10).map(o => `<tr><td>${hhmmss(o.ts)}</td><td>${esc(o.coin || "")}</td><td>${o.is_buy == null ? "" : (String(o.coin || "").endsWith("1") === o.is_buy) ? "NO" : "YES"}</td><td>${o.px != null ? cents(o.px) : ""}</td><td>${o.sz ?? ""}</td><td class="${o.status === "filled" || (o.pnl ?? 0) > 0 ? "up" : o.status === "error" ? "down" : "t2"}">${esc(o.status)}${o.pnl != null ? " " + usd(o.pnl) : ""}</td></tr>`).join("") + `</table></div>` : "")
+    + `<div class="note">The switch is <b>hip4_live.live_enabled</b> in config.yaml — only you flip it. See LIVE_PILOT.md.</div>`);
+}
+async function renderShadow() {
+  const S = await get("/api/hip4live").catch(() => null);
+  if (!S || S.enabled === false) { setHTML($("shKv"), `<span>Status</span><b class="t2">off (hip4_live.shadow)</b>`); return; }
+  setHTML($("shMeta"), `<span class="amber">${esc(S.mode)}</span>`);
+  const b = S.budget;
+  setHTML($("shKv"), `<span>Orders we'd have resting</span><b>${S.working_orders}</b>`
+    + `<span>Legal live orders</span><b class="${S.validity == null ? "t2" : S.validity >= 0.9 ? "up" : "down"}">${S.validity == null ? "—" : Math.round(S.validity * 100) + "%"} <span class="t2">of ${S.checked} checks/h</span></b>`
+    + (Object.keys(S.rejected_reasons).length ? `<span>Rejected because</span><b class="t2" style="font-size:10.5px">${Object.entries(S.rejected_reasons).map(([k, v]) => `${esc(k)} ×${v}`).join(" · ")}</b>` : "")
+    + `<span>Actions / min</span><b>${S.per_min.order} new · ${S.per_min.modify} re-price · ${S.per_min.cancel} cancel</b>`
+    + `<span>Order budget</span><b class="${b.ok ? "up" : "down"}">${b.days_until_empty == null ? "self-sustaining" : "empty in " + b.days_until_empty + " d"} <span class="t2">(${b.spend_per_day.toLocaleString()}/day spent, ${b.earn_per_day.toLocaleString()} earned)</span></b>`);
+  setHTML($("shAct"), !S.recent.length ? `<tr><td class="empty">no order actions yet</td></tr>` : `<tr><th>time</th><th>action</th><th>book</th><th>side</th><th>px</th><th>size</th></tr>` +
+    S.recent.slice(0, 12).map(a => `<tr><td>${hhmmss(a.ts)}</td><td class="${a.kind === "order" ? "up" : a.kind === "cancel" ? "down" : "amber"}">${a.kind}</td><td>${esc(a.coin)}${a.coin.endsWith("1") ? ' <span class="muted">No</span>' : ' <span class="muted">Yes</span>'}</td><td>${a.is_buy ? "buy" : "sell"}</td><td>${cents(a.px)}</td><td>${a.sz}</td></tr>`).join(""));
+}
+function renderSize(sz) {
+  if (!sz) { setHTML($("szBtns"), `<span class="muted">market maker off</span>`); return; }
+  const opts = [0.5, 1, 2, 3, 5, 10].filter(v => v <= sz.max_multiplier);
+  if (!$("szIn")) {
+    $("szBtns").innerHTML = opts.map(v => `<button class="btn" type="button" data-m="${v}">${v}×</button>`).join("")
+      + `<input id="szIn" type="number" min="0.25" max="${sz.max_multiplier}" step="0.25" aria-label="Custom size" style="width:62px;font:500 11px var(--mono);background:none;color:var(--text);border:1px solid var(--hair-2);border-radius:6px;padding:4px 6px">`;
+    const send = async m => { const r = await fetch(SIZE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ multiplier: m }) });
+      const j = await r.json().catch(() => ({})); if (j.ok) renderSize(j); else setText($("szNote"), j.error || "could not change the size"); };
+    $("szBtns").querySelectorAll("button").forEach(b => b.onclick = () => send(+b.dataset.m));
+    $("szIn").onchange = () => { const v = +$("szIn").value; if (v) send(v); };
+  }
+  $("szBtns").querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.m === sz.multiplier));
+  setText($("szEff"), `${sz.multiplier}×`);
+  setHTML($("szNote"), `<b>${Math.round(sz.quote_size)}</b> contracts per quote · max <b>${Math.round(sz.max_position)}</b> per market · risk cap <b>$${Math.round(sz.max_risk_usd).toLocaleString()}</b>`
+    + `<br><span class="muted">the position limit and risk cap scale with the size · paper only · applies within a second</span>`);
+}
+const BT_HELP = { mm: "the live market maker replayed: quotes fair ± edge, fills only when a real trade went through our price",
+  sniper: "takes stale quotes: when the book is `edge` past fair, an order lands `latency_ms` later against the book at that time",
+  arb: "no-forecast locks: Yes+No under/over $1 and cross-strike ordering; both legs must still be there after the latency" };
+let BT_AT = 0;
+async function backtestPanel(force) {
+  // the side panel refreshes every 3 s; the backtest list is ~1 MB, so fetch it only once a minute (every 5 s while a
+  // run is in progress, and at once after a click) - polling it every 3 s used to load the live server heavily
+  const due = force || !BT || BT.error || BT.running || BT.queue?.length ? 5000 : 60000;
+  if (BT && !force && Date.now() - BT_AT < due) return renderBacktest();
+  BT = await get("/api/backtest").catch(e => ({ error: e.message }));
+  BT_AT = Date.now();
+  return renderBacktest();
+}
+function renderBacktest() {
+  const nxt = BT.next_auto ? ` · auto suite in ${dur((BT.next_auto - nowS()) / 60)}` : "";
+  setText($("btSpan"), BT.tape_from ? `${((BT.tape_to - BT.tape_from) / 3600).toFixed(1)} h of tape${nxt}` : "no tape yet");
+  if (!$("btStrat") && BT.defaults) {
+    $("btForm").innerHTML = `<div class="form"><label>strategy<select id="btStrat">${Object.keys(BT.defaults).map(s => `<option>${s}</option>`).join("")}</select></label>
+      <label>hours<input id="btHours" type="number" min="0.1" step="0.5" placeholder="all"></label><span id="btParams" style="display:contents"></span>
+      <button class="btn" id="btRun" type="button">Run</button><button class="btn" id="btSuite" type="button" title="sniper 10/100/300/1000 ms, arb, maker">Run full suite</button></div><div class="note" id="btHelp"></div>`;
+    const fill = () => { const s = $("btStrat").value, d = BT.defaults[s];
+      const show = { mm: ["edge", "quote_size", "market_weight"], sniper: ["edge", "latency_ms", "size"], arb: ["min_edge", "latency_ms", "size"] }[s];
+      $("btParams").innerHTML = show.map(k => `<label>${k}<input data-k="${k}" type="number" step="any" value="${d[k]}"></label>`).join(""); $("btHelp").textContent = BT_HELP[s] || ""; };
+    $("btStrat").onchange = fill; fill();
+    const post = async body => { const r = await fetch("/api/backtest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({})); $("btMsg").textContent = j.ok ? j.message : (j.error || j.message || "could not start"); backtestPanel(true); };
+    $("btRun").onclick = () => { const params = {}; document.querySelectorAll("#btParams input").forEach(i => { if (i.value !== "") params[i.dataset.k] = +i.value; });
+      post({ strategy: $("btStrat").value, params, hours: $("btHours").value ? +$("btHours").value : null }); };
+    $("btSuite").onclick = () => post({ suite: true });
+  }
+  if (BT.error && !BT.results) { $("btMsg").textContent = BT.error; return; }
+  $("btProg").hidden = !BT.running; $("btProg").firstChild.style.width = Math.round((BT.progress || 0) * 100) + "%";
+  if (BT.running) $("btMsg").textContent = `running ${BT.current?.strategy} ${esc(JSON.stringify(BT.current?.params || {}))} · ${Math.round((BT.progress || 0) * 100)}%${BT.queue?.length ? ` · ${BT.queue.length} queued` : ""}`;
+  else if (BT.error) $("btMsg").innerHTML = `<span class="down">${esc(BT.error)}</span>`;
+  const rs = BT.results || [];
+  setHTML($("btRes"), !rs.length ? "" : `<tr><th>run</th><th>h</th><th>fills</th><th>P&amp;L</th><th>¢/ct</th><th>key</th></tr>` +
+    rs.slice(0, 14).map(r => { const key = r.strategy === "mm" ? `mo ${scents(r.avg_markout)}` : r.strategy === "sniper" ? `${r.params.latency_ms}ms · ${r.missed}/${r.signals} gone` : `${r.missed} gone`;
+      return `<tr class="click ${btSel === r.id ? "selr" : ""}" data-id="${r.id}"><td>${esc(r.strategy)}${r.label === "auto" ? ' <span class="muted">auto</span>' : ""} <span class="t2">${hhmm(r.ran_at)}</span></td><td>${r.hours}</td><td>${r.fills}</td>
+        <td class="${cls(r.pnl)}">${usd(r.pnl)}</td><td class="${cls(r.cents_per_contract)}">${r.cents_per_contract ?? "—"}</td><td class="t2">${key}</td></tr>`; }).join(""));
+  $("btRes").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => { btSel = +tr.dataset.id; renderBacktest(); });
+  const sel = rs.find(r => r.id === btSel) || rs[0];
+  if (sel) { btSel = sel.id; MINI = { kind: "equity", r: sel }; miniHead(`BACKTEST · ${sel.strategy.toUpperCase()} EQUITY`, `${sel.hours} h · ${usd(sel.pnl)}`);
+    setHTML($("btDetail"), `<b class="${cls(sel.pnl)}">${usd(sel.pnl)}</b> = ${usd(sel.pnl_settled)} settled on ${sel.settled_markets} markets (${sel.won_markets} won) + ${usd(sel.pnl_open_marked)} open, marked at the market mid · ${sel.fills} fills · `
+      + (sel.strategy === "mm" ? `edge ${scents(sel.avg_edge)}, 60 s markout ${scents(sel.avg_markout)}` : sel.strategy === "sniper" ? `${sel.signals} signals, ${sel.missed} gone before we arrived` : `signals ${esc(JSON.stringify(sel.signals))}, ${sel.missed} gone`)
+      + `<br><span class="muted">${esc(Object.entries(sel.params).map(([k, v]) => k + "=" + v).join(" "))}</span>`); }
+  else { MINI = { kind: "empty", empty: "run a backtest to see its equity curve here" }; miniHead("BACKTEST EQUITY", ""); }
+}
+
+async function side2() {
+  const L = await get("/api/hip4/ladder?coin=" + encodeURIComponent(route.coin));
+  const gsel = L.groups.find(x => x.expiry === route.exp && x.venue === route.venue) || L.groups.find(x => x.rows.some(r => r.real)) || L.groups[0];
+  if (!$("s2t")) $("side").innerHTML = `
+    <div class="blk"><h3><span>${esc(route.coin)}</span><em id="s2s"></em></h3><div class="big" id="s2p">—</div><div class="line" id="s2m"></div></div>
+    <div class="blk"><h3>Expiries <em>the rings of the tower</em></h3><div class="chips" id="s2x"></div></div>
+    <div class="blk"><h3>Strikes <em id="s2g"></em></h3><div class="tbl-wrap"><table id="s2t"></table></div>
+      <div class="note"><span class="amber">market</span> · <span class="cyan">fair</span> (model ⊕ market) · <span class="violet">model</span> · <b>jev</b> · click a strike for layer 3</div></div>`;
+  setText($("s2p"), fp(L.spot)); setText($("s2s"), `${L.groups.length} expiries · ${L.groups.reduce((a, g) => a + g.rows.length, 0)} markets`);
+  setHTML($("s2x"), L.groups.map(x => `<span class="chip ${x === gsel ? "sel" : ""}" data-e="${x.expiry}" data-v="${esc(x.venue)}">${hhmm(x.expiry)} <span style="color:${venueCol(x.venue)}">${esc(x.venue)}</span> · ${dur(x.tte_min)} · ${x.rows.length}</span>`).join("") || `<span class="empty">no listed markets</span>`);
+  $("s2x").querySelectorAll(".chip").forEach(c => c.onclick = () => go(`#/coin/${encodeURIComponent(route.coin)}/${c.dataset.e}/${encodeURIComponent(c.dataset.v)}`));
+  if (!gsel) return;
+  const rows = gsel.rows;
+  setText($("s2m"), `${hhmm(gsel.expiry)} UTC ${gsel.venue} · ${dur(gsel.tte_min)} left · settles on ${rows[0].source} (${rows[0].twap_s}s avg)`);
+  setText($("s2g"), `${rows.filter(r => r.real).length}/${rows.length} with a real book`);
+  setHTML($("s2t"), `<tr><th>strike</th><th>bid/ask</th><th>fair</th><th>model</th><th>jev</th><th>ours</th><th>pos</th></tr>` +
+    rows.map(r => `<tr class="click ${r.real ? "" : "dim"}" data-id="${r.id}"><td>${r.rule === ">=" ? "≥" : ">"}${fp(r.strike)} <span class="muted">${L.spot ? ((r.strike / L.spot - 1) * 1e4).toFixed(0) + "bp" : ""}</span></td>
+      <td class="amber">${r.real ? cents(r.bid) + "/" + cents(r.ask) : "no book"}</td><td class="cyan">${cents(r.fair)}</td><td class="violet">${cents(r.model)}</td><td>${cents(jevOf(r.fc))}</td>
+      <td class="up">${r.our_bid != null || r.our_ask != null ? cents(r.our_bid) + "/" + cents(r.our_ask) : "—"}</td><td class="${r.qty > 0 ? "up" : r.qty < 0 ? "down" : "t2"}">${r.qty || "·"}</td></tr>`).join(""));
+  $("s2t").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => go(`#/m/${tr.dataset.id}`));
+  MINI = { kind: "curve", rows, spot: L.spot };
+  miniHead(`THE CURVE · ${route.coin} ${hhmm(gsel.expiry)} ${gsel.venue}`, `<span class="amber">mkt</span> <span class="cyan">fair</span> <span class="violet">model</span> jev`);
+}
+
+async function side3() {
+  const M = await get("/api/hip4/market?id=" + route.id), m = M.market;
+  if (!$("s3k")) $("side").innerHTML = `
+    <div class="blk"><h3><span id="s3n"></span><em id="s3e"></em></h3><div class="big" id="s3t">—</div><div class="line" id="s3m"></div></div>
+    <div class="blk"><h3>Probability gauge <em>0 → 100%</em></h3><div class="gauge" id="s3g"></div><div class="gl-lbls"><span>0%</span><span>50%</span><span>100%</span></div></div>
+    <div class="blk"><div class="kpis" id="s3k"></div></div>
+    <div class="blk"><h3>Forecasters <em id="s3fa"></em></h3><div class="kv" id="s3f"></div></div>
+    <div class="blk"><h3>Yes book <em id="s3bm"></em></h3><table id="s3b"></table></div>
+    <div class="blk"><h3>Recent trades</h3><div class="tbl-wrap" style="max-height:230px;overflow:auto"><table id="s3tr"></table></div></div>
+    <div class="blk"><h3>Our fills here</h3><div class="tbl-wrap"><table id="s3fl"></table></div></div>`;
+  const b = M.book, bb = b?.bids?.[0]?.[0], ba = b?.asks?.[0]?.[0], real = bb != null && ba != null && ba - bb <= .5, mm = real ? (bb + ba) / 2 : null;
+  setHTML($("s3n"), `${esc(m.coin)} ${m.rule === ">=" ? "≥" : ">"} ${fp(m.strike)}`); setText($("s3e"), `#${m.id} · ${m.venue}`);
+  setText($("s3t"), M.tte_min < 0 ? "market expired · settling" : "market expires in " + dur(M.tte_min)); setText($("s3m"), `expires ${hhmm(m.expiry)} UTC · ${m.source} (${m.twap_s}s avg) · spot ${fp(M.spot)} (${M.spot ? ((m.strike / M.spot - 1) * 1e4).toFixed(1) : "—"} bps to strike)`);
+  const tick = (v, col, name, top) => v == null ? "" : `<div class="tk" style="left:${(v * 100).toFixed(2)}%;background:${col};box-shadow:0 0 8px ${col}"><span style="color:${col};${top ? "" : "top:auto;bottom:-15px"}">${name} ${cents(v)}</span></div>`;
+  const jv = jevOf(M.fc);
+  setHTML($("s3g"), (real ? `<div class="band" style="left:${bb * 100}%;width:${Math.max(0.4, (ba - bb) * 100)}%"></div>` : "") + tick(M.fair, K.cyan, "fair", true) + tick(M.model, K.purple, "model", false)
+    + tick(jv, K.white, "jev", false) + tick(M.fc?.claude, "#c084fc", "claude", true) + (M.quote?.bid_sz ? tick(M.quote.bid, K.green, "bid", false) : "") + (M.quote?.ask_sz ? tick(M.quote.ask, K.green, "ask", true) : ""));
+  setHTML($("s3k"), kpi("Market", real ? `${cents(bb)}/${cents(ba)}` : "no book", real ? `mid ${cents(mm)} · spread ${cents(ba - bb)}` : "placeholder orders", "amber")
+    + kpi("Fair", cents(M.fair ?? M.model), `model ${cents(M.model)}`, "cyan")
+    + kpi("Our quotes", M.quote ? `${M.quote.bid_sz > 0 ? cents(M.quote.bid) : "—"}/${M.quote.ask_sz > 0 ? cents(M.quote.ask) : "—"}` : "—", M.quote ? `${M.quote.bid_sz} × ${M.quote.ask_sz}` : !M.primary ? "not ours: settles on a price source the maker doesn't trade"
+      : M.tte_min > 65 ? "not ours yet: the maker only trades markets ending within 65 min" : M.tte_min < 3 ? "quotes pulled in the last 3 min" : "not quoting right now", "up")
+    + kpi("Position", M.position ? (M.position.qty > 0 ? "+" : "") + M.position.qty : "flat", M.position ? `${M.position.fills} fills · fees $${M.position.fees.toFixed(2)}` : "", M.position ? (M.position.qty > 0 ? "up" : "down") : "t2"));
+  const fc = M.fc; setText($("s3fa"), fc ? `asked ${ago(fc.ts)} ago (${fc.checkpoint} checkpoint)` : "Jev is asked ~12 and ~55 min before expiry (BTC/ETH/SOL/HYPE)");
+  const row = (n, v, col) => `<span style="color:${col}">${n}</span><b>${cents(v)}${mm != null && v != null ? ` <span class="${cls(v - mm)}" style="font-size:10px">${scents(v - mm)} vs mid</span>` : ""}</b>`;
+  setHTML($("s3f"), row("Market mid", mm, K.amber) + row("Our fair", M.fair, K.cyan) + row("HAR model", M.model, K.purple) + (fc ? row("Jev v1", fc.jev, K.white) + row("Jev v3", fc.jev_v3, K.white) + row("Jev v4", fc.jev_v4, K.white) + row("Claude", fc.claude, "#c084fc") : ""));
+  const bids = (b?.bids || []).slice(0, 5), asks = (b?.asks || []).slice(0, 5), n = Math.max(bids.length, asks.length), mx = Math.max(1, ...bids.map(x => x[1]), ...asks.map(x => x[1]));
+  setText($("s3bm"), b ? `updated ${ago(b.t)} ago` : "");
+  const bar = (sz, col, right) => `<div style="height:3px;margin-top:2px;background:${col};opacity:.6;width:${Math.round(sz / mx * 100)}%;${right ? "margin-left:auto" : ""}"></div>`;
+  setHTML($("s3b"), !b ? `<tr><td class="empty">no book recorded yet</td></tr>` : `<tr><th>size</th><th>bid</th><th>ask</th><th>size</th></tr>` +
+    Array.from({ length: n }, (_, i) => `<tr><td>${bids[i] ? bids[i][1] + bar(bids[i][1], K.up, false) : ""}</td><td class="up">${bids[i] ? cents(bids[i][0]) : ""}</td><td class="down">${asks[i] ? cents(asks[i][0]) : ""}</td><td>${asks[i] ? asks[i][1] + bar(asks[i][1], K.down, true) : ""}</td></tr>`).join(""));
+  setHTML($("s3tr"), !M.trades.length ? `<tr><td class="empty">no trades since the recorder started</td></tr>` : `<tr><th>time</th><th>taker</th><th>price</th><th>size</th></tr>` +
+    M.trades.map(t => `<tr><td>${hhmmss(t.et / 1000)}</td><td><span class="badge ${t.sd === "B" ? "b" : "s"}">${t.sd === "B" ? "BOUGHT" : "SOLD"}</span></td><td>${cents(t.p)}</td><td>${t.s}</td></tr>`).join(""));
+  setHTML($("s3fl"), !M.fills.length ? `<tr><td class="empty">no fills on this market</td></tr>` : `<tr><th>time</th><th></th><th>qty</th><th>px</th><th>edge</th><th>60s</th></tr>` +
+    M.fills.map(f => `<tr><td>${hhmmss(f.ts)}</td><td><span class="badge ${f.side > 0 ? "b" : "s"}" title="${f.side > 0 ? "bought Yes: wins if the price ends ABOVE the strike" : "sold Yes = bet No: wins if the price ends BELOW the strike"}">${f.side > 0 ? "BET YES" : "BET NO"}</span></td><td>${f.qty}</td><td>${cents(f.px)}</td><td class="${cls(f.edge)}">${scents(f.edge)}</td><td class="${cls(f.markout)}">${f.markout == null ? "…" : scents(f.markout)}</td></tr>`).join(""));
+  MINI = { kind: "market", M };
+  miniHead(`PRICE VS FAIR · ${m.coin} ${m.rule === ">=" ? "≥" : ">"}${fp(m.strike)}`, M.history.length ? `last ${Math.round((M.history.at(-1)[0] - M.history[0][0]) / 60)} min` : "history starts when the maker tracks it");
+  renderPipe();
+}
+
+// ===================================================================== start
+route = parse(); renderPipe(); sideTick(true); pollU(); pollTape(); requestAnimationFrame(loop);
+</script>

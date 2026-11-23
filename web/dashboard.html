@@ -1,0 +1,1703 @@
+<title>HELIX Trading Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  /* Layout: a dense trading terminal on one dark ground. Command bar and ticker on top, KPI band, three live
+     market panes, a full-width decision raster, analytics panes on a 12-column grid, status line pinned below.
+     Amber is the terminal's own voice. Blue is always Jev. Grey is always the rules-only baseline. */
+  color-scheme: dark;
+  --bg: #05070a;
+  --panel: #0a0e13;
+  --panel-2: #0e131a;
+  --panel-3: #161d27;
+  --line: #19212b;
+  --line-2: #273343;
+  --text: #e4ebf3;
+  --text-2: #a1aebd;
+  --text-3: #6e7f93;
+  --amber: #ffb02e;
+  --amber-dim: #2b2009;
+  --jev: #3d9bff;
+  --jev-dim: #102a45;
+  --opus: #a78bfa;
+  --base: #8593a3;
+  --up: #1fd286;
+  --down: #ff4d5a;
+  --warn: #ff8c42;
+  --late: #c084fc;
+  --teal: #2dd4bf;
+  --idle: #10161e;
+  --hold: #1d3c5e;
+  --fallback: #3b4655;
+  --paused: #5e1f2a;
+  --f-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --f-cond: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--bg); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 400 13px/1.45 var(--f-ui); -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(34px + env(safe-area-inset-bottom, 0px));
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); } .dn { color: var(--down); } .mut { color: var(--text-3); } .wrn { color: var(--warn); } .jv { color: var(--jev); }
+small { font-size: .78em; color: var(--text-3); margin-left: 2px; font-weight: 500; }
+
+/* ---------------------------------------------------------------- command bar */
+.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  display: flex; align-items: center; gap: 12px; height: 48px; padding-inline: 16px;
+  background: var(--bg); background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.brand svg { width: 24px; height: 24px; display: block; }
+.brand .word { font: 700 16px/1 var(--f-cond); letter-spacing: .24em; color: var(--text); }
+.brand .sub { font: 600 10px/1 var(--f-cond); letter-spacing: .22em; color: var(--amber); padding-left: 9px; border-left: 1px solid var(--line-2); }
+.tag { font: 600 10px/1 var(--f-mono); letter-spacing: .1em; padding: 5px 7px; border-radius: 2px; border: 1px solid var(--line-2); white-space: nowrap; flex: none; }
+.tag.paper { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); background: var(--amber-dim); }
+.pills { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; flex: 1; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; flex: none;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--panel);
+  font: 500 11px/1 var(--f-mono); color: var(--text-2); white-space: nowrap;
+}
+.pill b { font: 600 9.5px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
+.dot.ok { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 20%, transparent); }
+.dot.warn { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 20%, transparent); }
+.dot.bad { background: var(--down); box-shadow: 0 0 0 3px color-mix(in srgb, var(--down) 22%, transparent); }
+.dot.ok.live { animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--up) 0%, transparent); } }
+.top-r { display: flex; align-items: center; gap: 10px; flex: none; }
+.clock { font: 500 12px/1 var(--f-mono); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.clock b { font: 600 9.5px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); margin-left: 5px; }
+.btn {
+  height: 28px; padding: 0 11px; border-radius: 2px; border: 1px solid var(--line-2); background: var(--panel-2);
+  font: 600 10.5px/1 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; white-space: nowrap; color: var(--text-2);
+}
+.btn:hover { border-color: var(--text-3); color: var(--text); }
+.btn.kill { color: var(--down); border-color: color-mix(in srgb, var(--down) 55%, transparent); background: color-mix(in srgb, var(--down) 9%, var(--panel)); }
+.btn.kill:hover { background: color-mix(in srgb, var(--down) 20%, var(--panel)); }
+.btn.solid { background: var(--down); border-color: var(--down); color: var(--bg); }
+.btn.go { color: var(--up); border-color: color-mix(in srgb, var(--up) 55%, transparent); background: color-mix(in srgb, var(--up) 9%, var(--panel)); }
+.btn.violet { color: var(--opus); border-color: color-mix(in srgb, var(--opus) 55%, transparent); background: color-mix(in srgb, var(--opus) 10%, var(--panel)); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.confirm { display: inline-flex; align-items: center; gap: 6px; font: 500 11.5px/1.2 var(--f-ui); color: var(--text); }
+
+/* ---------------------------------------------------------------- banners */
+.banner { display: flex; align-items: center; gap: 12px; padding: 7px 16px; font: 12px/1.4 var(--f-ui); color: var(--text-2); border-bottom: 1px solid var(--line); }
+.banner .bt { font: 700 10.5px/1 var(--f-cond); letter-spacing: .14em; text-transform: uppercase; flex: none; }
+.banner.sim { background: repeating-linear-gradient(135deg, var(--amber-dim) 0 12px, color-mix(in srgb, var(--amber-dim) 55%, var(--bg)) 12px 24px); }
+.banner.sim .bt { color: var(--amber); }
+.banner.bad { background: color-mix(in srgb, var(--down) 13%, var(--bg)); color: var(--text); }
+.banner.bad .bt { color: var(--down); }
+.banner.warn { background: color-mix(in srgb, var(--amber) 10%, var(--bg)); color: var(--text); }
+.banner.warn .bt { color: var(--amber); }
+.banner .btn { margin-left: auto; }
+
+/* ---------------------------------------------------------------- page */
+.wrap { padding-inline: 16px; padding-block: 12px 22px; display: grid; gap: 10px; max-width: 2400px; margin-inline: auto; }
+.pane { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; display: flex; flex-direction: column; }
+.ph { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 0 11px; border-bottom: 1px solid var(--line); background: var(--panel-2); border-radius: 3px 3px 0 0; }
+.fn { font: 600 9.5px/1 var(--f-mono); letter-spacing: .06em; color: var(--amber); background: var(--amber-dim); padding: 4px 5px; border-radius: 2px; flex: none; }
+.ph h2 { margin: 0; font: 600 11px/1.2 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ph .meta.ctl { overflow-x: auto; overflow-y: hidden; flex: 0 1 auto; scrollbar-width: thin; }   /* 20 coin buttons scroll */
+.ph .meta { margin-left: auto; font: 11px/1.2 var(--f-mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pb { padding: 11px; min-width: 0; flex: 1; }
+.empty { display: grid; place-items: center; text-align: center; color: var(--text-3); font: 12px/1.45 var(--f-ui); padding: 14px; border: 1px dashed var(--line-2); border-radius: 2px; }
+.empty.sm { font-size: 11px; padding: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 2px; overflow: hidden; flex: none; }
+.seg button { border: 0; background: transparent; padding: 5px 8px; font: 600 9.5px/1 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button.on { background: var(--panel-3); color: var(--text); }
+.ax { font: 500 10px/1 var(--f-mono); fill: var(--text-3); }
+.axc { font: 600 9px/1 var(--f-cond); letter-spacing: .1em; fill: var(--text-3); }
+.tagt { fill: var(--bg); font-weight: 600; }
+.halo { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+svg { display: block; max-width: 100%; }
+
+/* ---------------------------------------------------------------- ticker */
+.ticker { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.tk { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel); min-width: 0; cursor: pointer; border: 0; text-align: left; position: relative; }
+.tk:hover { background: var(--panel-2); }
+.tk.sel::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--amber); }
+.tk .sym { font: 700 13px/1 var(--f-cond); letter-spacing: .1em; color: var(--text); flex: none; }
+.tk .sym small { font: 600 9px/1 var(--f-cond); letter-spacing: .12em; }
+.tk .px { font: 500 15px/1 var(--f-mono); font-variant-numeric: tabular-nums; flex: none; transition: color .5s; }
+.tk .chg { font: 500 11.5px/1 var(--f-mono); flex: none; }
+.tk svg { width: 84px; height: 24px; flex: none; }
+.tk .kv { font: 500 11px/1 var(--f-mono); color: var(--text-2); white-space: nowrap; }
+.tk .kv b { font: 600 9px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); margin-right: 5px; }
+.flash-up { color: var(--up) !important; transition: none !important; }
+.flash-dn { color: var(--down) !important; transition: none !important; }
+
+/* ---------------------------------------------------------------- KPI band */
+.kpis { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.kpi { background: var(--panel); padding: 10px 12px 9px; min-width: 0; display: grid; gap: 4px; align-content: start; }
+.kpi .k { font: 600 9.5px/1 var(--f-cond); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .v { font: 500 21px/1.15 var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
+.kpi .s { font: 500 10.5px/1.3 var(--f-mono); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .viz { height: 28px; margin-top: 3px; }
+.kpi .viz svg { width: 100%; height: 28px; }
+.tug { position: relative; height: 28px; }
+.tug::before { content: ""; position: absolute; left: 0; right: 0; top: 13px; height: 2px; background: var(--panel-3); }
+.tug::after { content: ""; position: absolute; left: 50%; top: 6px; height: 16px; width: 1px; background: var(--text-3); }
+.tug i { position: absolute; top: 10px; height: 8px; border-radius: 1px; }
+.tug span { position: absolute; bottom: -1px; font: 600 8.5px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); }
+.bar1 { position: relative; height: 8px; margin-top: 10px; background: var(--panel-3); border-radius: 1px; }
+.bar1 i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 1px; background: var(--jev); }
+.bar1 b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--down); }
+.bar1 em { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); }
+
+/* ---------------------------------------------------------------- markets */
+.mtabs { display: none; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.mtabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 6px; border: 0; background: var(--panel); cursor: pointer; min-width: 0; }
+.mtabs button b { font: 700 12px/1 var(--f-cond); letter-spacing: .1em; }
+.mtabs button span { font: 500 11px/1 var(--f-mono); color: var(--text-2); }
+.mtabs button i { width: 6px; height: 6px; border-radius: 50%; background: var(--st, var(--line-2)); }
+.mtabs button.on { background: var(--panel-3); box-shadow: inset 0 -2px 0 var(--amber); }
+.markets { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }   /* wraps for 20 markets */
+.mkt { position: relative; overflow: hidden; }
+.mkt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--st, var(--line-2)); transition: background .3s; }
+.mh { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 11px 12px 6px 14px; }
+.mh-id { display: grid; gap: 6px; }
+.mh .sym { font: 700 22px/1 var(--f-cond); letter-spacing: .06em; color: var(--text); }
+.mh .sym small { font: 600 10px/1 var(--f-cond); letter-spacing: .16em; margin-left: 5px; vertical-align: 3px; }
+.src { display: inline-flex; gap: 6px; align-items: center; font: 600 9.5px/1 var(--f-mono); letter-spacing: .06em; color: var(--text-2); }
+.src i { font-style: normal; padding: 3px 5px; border-radius: 2px; background: var(--panel-3); color: var(--text-2); }
+.src i.ok { color: var(--up); } .src i.warn { color: var(--amber); } .src i.bad { color: var(--down); }
+.mh-px { text-align: right; display: grid; gap: 5px; }
+.mh .px { font: 500 25px/1 var(--f-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; transition: color .6s; }
+.mh .chg { font: 500 11.5px/1 var(--f-mono); }
+.mstats { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 12px 8px 14px; font: 500 10.5px/1.3 var(--f-mono); color: var(--text-2); border-bottom: 1px solid var(--line); }
+.mstats b { font: 600 9px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); margin-right: 4px; }
+.mbody { display: grid; gap: 0; }
+.mcol { min-width: 0; padding: 8px 12px 10px 14px; display: grid; gap: 9px; align-content: start; }
+.mcol + .mcol { border-top: 1px solid var(--line); }
+.chart { min-width: 0; }
+.mrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.sect { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 9.5px/1 var(--f-cond); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
+.sect span:last-child { font: 500 10px/1 var(--f-mono); letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.micro { display: grid; gap: 5px; align-content: start; }
+.mr { display: grid; grid-template-columns: 50px minmax(0, 1fr) 70px; align-items: center; gap: 7px; height: 13px; }
+.ml { font: 600 9px/1 var(--f-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+.mv { font: 500 10.5px/1 var(--f-mono); color: var(--text-2); text-align: right; white-space: nowrap; }
+.dv { position: relative; height: 7px; background: var(--panel-3); border-radius: 1px; }
+.dv::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-3); }
+.dv i { position: absolute; top: 0; bottom: 0; border-radius: 1px; }
+.dv i.p { background: var(--up); } .dv i.n { background: var(--down); }
+.rt { position: relative; height: 7px; background: var(--panel-3); border-radius: 1px; }
+.rt i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--base); border-radius: 1px; }
+.rt i.hot { background: var(--warn); } .rt i.cold { background: var(--jev); }
+.rt b { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-3); }
+.bat { display: grid; gap: 6px; }
+.bat.dim { opacity: .38; filter: grayscale(1); }
+.br { display: grid; grid-template-columns: 70px minmax(0, 1fr) 78px; align-items: center; gap: 9px; min-height: 16px; }
+.bl { font: 600 9.5px/1 var(--f-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+.bn { font: 500 11px/1 var(--f-mono); color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stk { display: flex; height: 15px; border-radius: 1px; overflow: hidden; background: var(--panel-3); gap: 1px; }
+.stk i { display: block; height: 100%; font: 700 8.5px/15px var(--f-cond); letter-spacing: .08em; color: var(--bg); text-align: center; overflow: hidden; white-space: nowrap; font-style: normal; min-width: 0; }
+.stk i.lt { color: var(--text-2); }
+.gauge { position: relative; height: 9px; background: var(--panel-3); border-radius: 1px; }
+.gauge i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--jev); border-radius: 1px; }
+.gauge i.hot { background: var(--warn); }
+.gauge b, .scale b.th { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text-2); }
+.scale { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; height: 15px; }
+.scale i { font: 700 8.5px/15px var(--f-cond); letter-spacing: .07em; text-align: center; color: var(--text); font-style: normal; background: color-mix(in srgb, var(--jev) var(--a, 10%), var(--panel-3)); overflow: hidden; white-space: nowrap; }
+.scale.red i { background: color-mix(in srgb, var(--warn) var(--a, 10%), var(--panel-3)); }
+.scale b.mk { position: absolute; top: -6px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--text); margin-left: -5px; }
+.batx { display: flex; align-items: center; gap: 8px; font: 11.5px/1.35 var(--f-ui); color: var(--text-2); margin-bottom: 6px; min-height: 22px; }
+.acts { display: grid; gap: 5px; }
+.ar { display: grid; grid-template-columns: 36px auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 22px; }
+.who { font: 700 9.5px/1 var(--f-cond); letter-spacing: .14em; color: var(--text-3); }
+.who.jev { color: var(--jev); }
+.chip { display: inline-block; font: 600 9.5px/1 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; padding: 4px 6px; border-radius: 2px; border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; }
+.chip.long { color: var(--up); border-color: color-mix(in srgb, var(--up) 50%, transparent); background: color-mix(in srgb, var(--up) 12%, transparent); }
+.chip.short { color: var(--down); border-color: color-mix(in srgb, var(--down) 50%, transparent); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.chip.exit { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.chip.hold { color: var(--jev); border-color: color-mix(in srgb, var(--jev) 45%, transparent); background: color-mix(in srgb, var(--jev) 10%, transparent); }
+.chip.block { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.chip.late { color: var(--late); border-color: color-mix(in srgb, var(--late) 50%, transparent); background: color-mix(in srgb, var(--late) 10%, transparent); }
+.chip.pass { color: var(--up); border-color: color-mix(in srgb, var(--up) 40%, transparent); }
+.chip.aside { color: var(--text-3); }
+.chip.jevb { color: var(--jev); border-color: color-mix(in srgb, var(--jev) 40%, transparent); }
+.chip.baseb { color: var(--base); }
+.why { font: 11.5px/1.3 var(--f-ui); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lat { font: 500 10px/1 var(--f-mono); color: var(--text-3); white-space: nowrap; }
+.posb { border-top: 1px dashed var(--line-2); padding-top: 9px; display: grid; gap: 7px; }
+.pl { display: flex; align-items: center; gap: 9px; font: 500 11.5px/1.2 var(--f-mono); min-height: 20px; flex-wrap: wrap; }
+.pl.sm { font-size: 10.5px; color: var(--text-2); min-height: 16px; }
+.pl .held { margin-left: auto; }
+.sltp { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; gap: 8px; align-items: center; font: 500 10px/1 var(--f-mono); }
+.sltp > span:last-child { text-align: right; }
+.track { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--down) 60%, transparent), color-mix(in srgb, var(--down) 12%, transparent) var(--e, 50%), color-mix(in srgb, var(--up) 12%, transparent) var(--e, 50%), color-mix(in srgb, var(--up) 60%, transparent)); }
+.track.off { background: var(--panel-3); }
+.track .en { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--jev); left: var(--e); }
+.track .cur { position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%; background: var(--text); border: 2px solid var(--bg); transform: translate(-50%, -50%); left: var(--c); transition: left .5s; }
+
+/* ---------------------------------------------------------------- decision stream */
+.streamBox { position: relative; }
+.streamBox canvas { display: block; width: 100%; cursor: crosshair; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font: 500 10.5px/1 var(--f-mono); color: var(--text-2); }
+.lg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lg i { width: 10px; height: 10px; border-radius: 1px; flex: none; }
+.lg em { font-style: normal; color: var(--text-3); }
+.lg span { font: 600 9.5px/1 var(--f-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.tip { position: fixed; z-index: 60; pointer-events: none; background: var(--panel-3); border: 1px solid var(--line-2); border-radius: 2px; padding: 7px 9px; font: 500 11px/1.45 var(--f-mono); color: var(--text); white-space: nowrap; box-shadow: 0 10px 30px -10px var(--bg); }
+.tip b { font: 700 10px/1 var(--f-cond); letter-spacing: .12em; color: var(--amber); }
+
+/* ---------------------------------------------------------------- grid of panes */
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; grid-auto-flow: dense; }
+.s4 { grid-column: span 4; } .s8 { grid-column: span 8; } .s12 { grid-column: 1 / -1; }
+.eqwrap { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; align-items: start; }
+.card { display: grid; }
+.sc { display: grid; grid-template-columns: minmax(0, 1fr) 76px 76px; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); font: 500 11px/1.2 var(--f-mono); }
+.sc:last-child { border-bottom: 0; }
+.sc > span:first-child { font: 600 9.5px/1.2 var(--f-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.sc > span:not(:first-child) { text-align: right; color: var(--text-2); white-space: nowrap; }
+.sc .best { color: var(--text); font-weight: 600; }
+.sc .best::before { content: "\25B8 "; color: var(--amber); font-size: .85em; }
+.sc.hd > span { font: 700 9.5px/1 var(--f-cond) !important; letter-spacing: .14em !important; }
+.fun { display: grid; gap: 12px; }
+.fs { display: grid; gap: 4px; }
+.fs .fl { display: flex; justify-content: space-between; gap: 8px; font: 600 9.5px/1 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); }
+.fs .fl em { font: 500 10px/1 var(--f-mono); letter-spacing: 0; text-transform: none; font-style: normal; }
+.fb { display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 8px; align-items: center; font: 500 10.5px/1 var(--f-mono); }
+.fb .tr { height: 10px; background: var(--panel-3); border-radius: 1px; position: relative; }
+.fb .tr i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 1px; }
+.fb > span:last-child { text-align: right; color: var(--text-2); white-space: nowrap; }
+.fb em { font-style: normal; color: var(--text-3); font-size: 9.5px; }
+.keyrow { display: flex; gap: 14px; flex-wrap: wrap; font: 500 10px/1 var(--f-mono); color: var(--text-3); margin-top: 10px; }
+.keyrow i { display: inline-block; width: 9px; height: 9px; border-radius: 1px; vertical-align: -1px; margin-right: 5px; }
+.statline { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 9px; font: 500 10.5px/1.3 var(--f-mono); color: var(--text-2); }
+.statline b { font: 600 9px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); margin-right: 4px; text-transform: uppercase; }
+.note { margin: 9px 0 0; font: 11.5px/1.45 var(--f-ui); color: var(--text-3); }
+.rates { display: flex; height: 16px; border-radius: 1px; overflow: hidden; margin-top: 8px; gap: 1px; }
+.rates i { font: 700 8.5px/16px var(--f-cond); letter-spacing: .08em; color: var(--bg); text-align: center; font-style: normal; overflow: hidden; white-space: nowrap; }
+.rates i.lt { color: var(--text-2); }
+.xt { width: 100%; border-collapse: collapse; font: 500 11px/1.3 var(--f-mono); font-variant-numeric: tabular-nums; }
+.xt th { font: 600 9px/1 var(--f-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); text-align: right; padding: 0 4px 6px; }
+.xt td { text-align: right; padding: 4px; border-top: 1px solid var(--line); color: var(--text-2); white-space: nowrap; }
+.xt th:first-child, .xt td:first-child { text-align: left; padding-left: 0; font-family: var(--f-ui); }
+.xt tr.tot td { border-top: 1px solid var(--line-2); color: var(--text); font-weight: 600; }
+.xt tr td.up { color: var(--up); }
+.xt tr td.dn { color: var(--down); }
+.bk { display: grid; gap: 8px; }
+.bkr { display: grid; gap: 4px; }
+.bkr .bt { display: flex; align-items: center; gap: 7px; font: 11.5px/1.25 var(--f-ui); color: var(--text-2); min-width: 0; }
+.bkr .bt span:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.bkr .bt em { margin-left: auto; font: 500 10.5px/1 var(--f-mono); color: var(--text); font-style: normal; white-space: nowrap; }
+.bkr .bb { height: 6px; background: var(--panel-3); border-radius: 1px; position: relative; }
+.bkr .bb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 1px; }
+.kind { font: 700 8.5px/1 var(--f-cond); letter-spacing: .12em; padding: 3px 4px; border-radius: 2px; flex: none; }
+.kind.pol { color: var(--jev); background: var(--jev-dim); }
+.kind.rsk { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.armed { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 11px; }
+.lim { display: grid; gap: 7px; }
+.li { display: grid; grid-template-columns: 82px minmax(0, 1fr) 104px; gap: 9px; align-items: center; }
+.li .n { font: 600 9.5px/1 var(--f-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.li .v { font: 500 10.5px/1 var(--f-mono); color: var(--text-2); text-align: right; white-space: nowrap; }
+.li .b { height: 7px; background: var(--panel-3); border-radius: 1px; position: relative; }
+.li .b i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 1px; }
+.verdict { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.vh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font: 500 11px/1.3 var(--f-mono); color: var(--text-2); }
+.vr { font: 11.5px/1.4 var(--f-ui); color: var(--text-2); }
+.checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 10px; }
+.ck { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 6px; align-items: center; font: 500 10px/1.5 var(--f-mono); color: var(--text-3); min-width: 0; }
+.ck b { font-weight: 700; color: var(--up); }
+.ck.bad { color: var(--text); } .ck.bad b { color: var(--down); }
+.ck span:nth-child(2) { font: 500 10.5px/1.5 var(--f-ui); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck.bad span:nth-child(2) { color: var(--down); }
+.tablewrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+.blot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
+.blot > * { min-width: 0; }
+.blot .tablewrap.open { max-height: none; }
+.blot .tablewrap.closed { max-height: 290px; }
+.blot .empty { min-height: 64px; }
+table { width: 100%; border-collapse: collapse; font: 500 11px/1.3 var(--f-mono); font-variant-numeric: tabular-nums; }
+th { position: sticky; top: 0; background: var(--panel); text-align: right; font: 600 9.5px/1 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); padding: 7px 8px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--text-2); }
+th:first-child, td:first-child { padding-left: 0; }
+td.l, th.l { text-align: left; }
+td.why2 { max-width: 280px; overflow: hidden; text-overflow: ellipsis; text-align: left; font-family: var(--f-ui); }
+tr:hover td { background: var(--panel-2); }
+.tapehd { display: grid; gap: 6px; margin-bottom: 9px; }
+.tapebar { display: flex; height: 8px; border-radius: 1px; overflow: hidden; gap: 1px; }
+.tapebar i { display: block; height: 100%; }
+.tape { display: grid; max-height: 330px; overflow-y: auto; }
+.tr2 { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) 76px 70px 22px; gap: 8px; align-items: center; padding: 4px 4px; font: 500 11px/1.2 var(--f-mono); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--line); }
+.tr2 > * { position: relative; }
+.tr2 .fill { position: absolute; left: 0; top: 1px; bottom: 1px; opacity: .13; border-radius: 1px; }
+.tr2 span { text-align: right; white-space: nowrap; }
+.tr2 span:first-of-type { text-align: left; color: var(--text-3); }
+.tr2.big { font-weight: 600; }
+.log { display: grid; max-height: 360px; overflow-y: auto; }
+.ev { display: grid; grid-template-columns: 58px 46px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.ev time { font: 500 10.5px/1.3 var(--f-mono); color: var(--text-3); }
+.ev .lv { font: 700 8.5px/1 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; padding: 3px 0; text-align: center; border-radius: 2px; background: var(--panel-3); color: var(--text-2); }
+.ev .lv.trade { color: var(--jev); background: var(--jev-dim); }
+.ev .lv.risk { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.ev .lv.warn { color: var(--amber); background: var(--amber-dim); }
+.ev .lv.error { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
+.ev p { margin: 0; font: 11.5px/1.4 var(--f-ui); color: var(--text-2); overflow-wrap: anywhere; }
+.opus { display: grid; gap: 10px; }
+.opushd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.report { max-height: 380px; overflow-y: auto; font: 12.5px/1.55 var(--f-ui); color: var(--text-2); padding-right: 4px; }
+.report h3, .report h4, .report h5, .report h6 { margin: 12px 0 6px; font: 600 11px/1.3 var(--f-cond); letter-spacing: .12em; text-transform: uppercase; color: var(--opus); }
+.report p { margin: 0 0 8px; max-width: 70ch; }
+.report ul, .report ol { margin: 0 0 8px; padding-left: 18px; }
+.report li { margin: 2px 0; }
+.report strong { color: var(--text); }
+.report code { font: 11px/1 var(--f-mono); color: var(--amber); }
+.cons { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.qs { display: grid; gap: 6px; align-content: start; }
+.q { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; padding: 7px 9px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 2px; }
+.q .qid { font: 600 10.5px/1.3 var(--f-mono); color: var(--jev); overflow-wrap: anywhere; }
+.q .qid em { display: block; font: 600 8.5px/1.5 var(--f-cond); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); font-style: normal; }
+.q .qt { font: 11.5px/1.4 var(--f-ui); color: var(--text-2); }
+.q .qo { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.q .qo span { font: 500 9.5px/1 var(--f-mono); padding: 3px 5px; border-radius: 2px; background: var(--panel-3); color: var(--text-2); }
+.json { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; font: 500 11px/1.5 var(--f-mono); color: var(--text-2); overflow: auto; max-height: 420px; }
+.json .jk { color: var(--text-2); } .json .jn { color: var(--amber); } .json .js { color: var(--teal); } .json .jl { color: var(--late); }
+
+/* ---------------------------------------------------------------- status line */
+.statusbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: flex; align-items: center; gap: 16px; min-height: 30px;
+  padding: 0 16px env(safe-area-inset-bottom, 0px);
+  background: var(--panel-2); border-top: 1px solid var(--line);
+  font: 500 10.5px/1 var(--f-mono); color: var(--text-2); white-space: nowrap; overflow: hidden;
+}
+.statusbar b { font: 600 9px/1 var(--f-cond); letter-spacing: .12em; color: var(--text-3); margin-right: 5px; }
+.statusbar .sp { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.statusbar .btn { height: 22px; padding: 0 8px; font-size: 9.5px; }
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1900px) {
+  .tk .kv.opt { display: none; }
+}
+@media (max-width: 1700px) {
+  .tk .kv.oi { display: none; }
+}
+@media (max-width: 1280px) {
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .s4 { grid-column: span 6; } .s8 { grid-column: 1 / -1; }
+  .tk .kv { display: none; }
+}
+@media (max-width: 1100px) {
+  .mtabs { display: flex; }
+  .markets { grid-template-columns: minmax(0, 1fr); }
+  .mkt:not(.is-active) { display: none; }
+  .mbody { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .mcol + .mcol { border-top: 0; border-left: 1px solid var(--line); }
+  .pills .pill.opt { display: none; }
+}
+@media (max-width: 860px) {
+  .eqwrap { grid-template-columns: minmax(0, 1fr); }
+  .cons { grid-template-columns: minmax(0, 1fr); }
+  .tk svg { display: none; }
+  .clock { display: none; }
+}
+@media (max-width: 760px) {
+  .grid > * { grid-column: 1 / -1; }
+  .mbody { grid-template-columns: minmax(0, 1fr); }
+  .mcol + .mcol { border-left: 0; border-top: 1px solid var(--line); }
+  .ticker { grid-template-columns: minmax(0, 1fr); }
+  .tk svg { display: block; margin-left: auto; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi .v { font-size: 18px; }
+  .pills .pill:not(.keep) { display: none; }
+  .pill .pr { display: none; }
+  .brand .sub { display: none; }
+  .statusbar .opt { display: none; }
+  .checks { grid-template-columns: minmax(0, 1fr); }
+  .q { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .mh .px { font-size: 22px; }
+}
+@media (max-width: 420px) {
+  .top { gap: 8px; }
+  .tag.paper { display: none; }
+  .mrow { grid-template-columns: minmax(0, 1fr); }
+  .br { grid-template-columns: 62px minmax(0, 1fr) 70px; gap: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<header class="top" id="top">
+  <div class="brand" aria-label="HELIX terminal">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 2.5c0 5.2 12 6.4 12 9.5s-12 4.3-12 9.5" fill="none" stroke="#ffb02e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M18 2.5c0 5.2-12 6.4-12 9.5s12 4.3 12 9.5" fill="none" stroke="#3d9bff" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M8.2 6.4h7.6M8.2 17.6h7.6" stroke="#6e7f93" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+    <span class="word">HELIX</span><span class="sub">TERMINAL</span>
+  </div>
+  <span class="tag paper" title="Paper trading only. No real orders are ever sent.">PAPER</span>
+  <div class="pills" id="pills"></div>
+  <div class="top-r">
+    <span class="clock" id="clock">--:--:--<b>UTC</b></span>
+    <div id="killBox"></div>
+  </div>
+</header>
+<div id="banners"></div>
+
+<main class="wrap">
+  <section class="ticker" id="ticker" aria-label="Markets"></section>
+  <section class="kpis" id="kpis" aria-label="Key figures"></section>
+  <nav class="mtabs" id="mtabs" aria-label="Choose a market"></nav>
+  <section class="markets" id="markets" aria-label="Live markets">
+    <div class="pane"><div class="pb"><div class="empty" style="min-height:220px">Connecting to the HELIX engine…</div></div></div>
+  </section>
+
+  <section class="pane" id="pStream">
+    <header class="ph"><span class="fn">DCSN</span><h2>Decision stream</h2><span class="meta" id="streamMeta"></span></header>
+    <div class="pb">
+      <div class="streamBox"><canvas id="streamCv" height="120" aria-label="Every decision for every market over the last five minutes"></canvas></div>
+      <div class="legend" id="streamLegend"></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="pane s8" id="pEquity">
+      <header class="ph"><span class="fn">EQTY</span><h2>Equity · Jev vs baseline</h2><span class="meta" id="eqMeta"></span></header>
+      <div class="pb eqwrap"><div class="chart" id="eqChart"></div><div class="card" id="eqCard"></div></div>
+    </article>
+    <article class="pane s4" id="pFunnel">
+      <header class="ph"><span class="fn">FNL</span><h2>Trade funnel</h2><span class="meta">log scale</span></header>
+      <div class="pb" id="funnel"></div>
+    </article>
+    <article class="pane s4" id="pLatency">
+      <header class="ph"><span class="fn">LAT</span><h2>Jev latency</h2><span class="meta" id="latMeta"></span></header>
+      <div class="pb"><div class="chart" id="latChart"></div><div id="latStats"></div></div>
+    </article>
+    <article class="pane s4" id="pCalib">
+      <header class="ph"><span class="fn">CAL</span><h2>Calibration</h2><span class="meta" id="calMeta"></span></header>
+      <div class="pb"><div class="chart" id="calChart"></div><div id="calStats"></div></div>
+    </article>
+    <article class="pane s4" id="pBlocks">
+      <header class="ph"><span class="fn">WHY</span><h2>Why no trade</h2><span class="meta ctl"><span class="seg" id="blkSeg"><button type="button" data-v="jev">Jev</button><button type="button" data-v="baseline">Base</button></span></span></header>
+      <div class="pb" id="blocks"></div>
+    </article>
+    <article class="pane s4" id="pRisk">
+      <header class="ph"><span class="fn">RISK</span><h2>Risk engine</h2><span class="meta ctl"><span class="seg" id="limSeg"><button type="button" data-v="jev">Jev</button><button type="button" data-v="baseline">Base</button></span></span></header>
+      <div class="pb" id="risk"></div>
+    </article>
+    <article class="pane s8" id="pBlotter">
+      <header class="ph"><span class="fn">BLTR</span><h2>Blotter</h2><span class="meta" id="bltMeta"></span></header>
+      <div class="pb blot" id="blotter"></div>
+    </article>
+    <article class="pane s4" id="pExits">
+      <header class="ph"><span class="fn">EXIT</span><h2>How Jev's bets end</h2><span class="meta">since reset</span></header>
+      <div class="pb" id="exits"></div>
+    </article>
+    <article class="pane s4" id="pTape">
+      <header class="ph"><span class="fn">TAPE</span><h2>Time &amp; sales</h2><span class="meta ctl"><span class="seg" id="tapeSeg"></span></span></header>
+      <div class="pb" id="tape"></div>
+    </article>
+    <article class="pane s4" id="pLog">
+      <header class="ph"><span class="fn">LOG</span><h2>Event log</h2><span class="meta" id="logMeta"></span></header>
+      <div class="pb"><div class="log" id="log"></div></div>
+    </article>
+    <article class="pane s12" id="pOpus">
+      <header class="ph"><span class="fn">OPUS</span><h2>Opus review</h2><span class="meta" id="opusMeta"></span></header>
+      <div class="pb" id="opus"></div>
+    </article>
+    <article class="pane s12" id="pConsole">
+      <header class="ph"><span class="fn">JEV</span><h2>Jev console</h2><span class="meta ctl"><span class="seg" id="conSeg"></span></span></header>
+      <div class="pb cons" id="console"></div>
+    </article>
+  </section>
+</main>
+<footer class="statusbar" id="statusbar"></footer>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const FRAMES = Array.isArray(window.HELIX_DEMO_FRAMES) ? window.HELIX_DEMO_FRAMES : null;
+  const PREVIEW = !!(FRAMES && FRAMES.length);
+  const params = new URLSearchParams(location.search);
+  const TOKEN = params.get("token") || "";
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const rootCss = getComputedStyle(document.documentElement);
+  const C = {};
+  ["bg", "panel", "panel-2", "panel-3", "line", "line-2", "text", "text-2", "text-3", "amber", "jev", "jev-dim", "opus",
+    "base", "up", "down", "warn", "late", "teal", "idle", "hold", "fallback", "paused"].forEach(k => {
+    C[k] = rootCss.getPropertyValue("--" + k).trim() || "#888888";
+  });
+  const FONT_COND = '"IBM Plex Sans Condensed", "Arial Narrow", sans-serif';
+  const FONT_MONO = '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
+  // decision codes, same order as the engine's C_IDLE ... C_PAUSED
+  const CODES = [
+    { label: "Idle", color: C.idle },
+    { label: "Holding", color: C.hold },
+    { label: "Long", color: C.up },
+    { label: "Short", color: C.down },
+    { label: "Exit", color: C.amber },
+    { label: "Risk block", color: C.warn },
+    { label: "Late", color: C.late },
+    { label: "Fallback", color: C.fallback },
+    { label: "Paused", color: C.paused },
+  ];
+  const LEGEND_ORDER = [2, 3, 4, 5, 1, 6, 7, 8, 0];
+  const MINUS = "−";
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("helix." + k); return v == null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("helix." + k, v); } catch (e) { /* storage blocked: fine */ } },
+  };
+  const ui = {
+    sel: store.get("sel", null), blocksBook: store.get("blocks", "jev"), limitsBook: store.get("limits", "jev"),
+    confirmKill: false, confirmReset: false, killMode: "", resetMode: "",
+    lastPx: {}, lastTk: {}, lastRisk: {}, conn: { ok: true, err: null }, frame: 0, stream: null,
+  };
+  let S = null;
+
+  // ------------------------------------------------------------------ formatting
+  const num = (x) => typeof x === "number" && isFinite(x);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const loc = (x, d) => Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const fmtNum = (x, d = 2) => num(x) ? (x < 0 ? MINUS : "") + loc(x, d) : "—";
+  const fmtInt = (x) => num(x) ? (x < 0 ? MINUS : "") + loc(Math.round(x), 0) : "—";
+  const fmtSigned = (x, d = 2) => num(x) ? (x > 0 ? "+" : x < 0 ? MINUS : "") + loc(x, d) : "—";
+  const fmtUsd = (x, d = 2) => num(x) ? (x < 0 ? MINUS : "") + "$" + loc(x, d) : "—";
+  const fmtUsdSigned = (x, d = 2) => num(x) ? (x > 0 ? "+" : x < 0 ? MINUS : "") + "$" + loc(x, d) : "—";
+  const pct = (p, d = 0) => num(p) ? (p * 100).toFixed(d) + "%" : "—";
+  const cls = (x) => !num(x) || x === 0 ? "" : x > 0 ? "up" : "dn";
+  function fmtCompact(x) {
+    if (!num(x)) return "—";
+    const a = Math.abs(x);
+    const [v, u] = a >= 1e9 ? [a / 1e9, "B"] : a >= 1e6 ? [a / 1e6, "M"] : a >= 1e3 ? [a / 1e3, "K"] : [a, ""];
+    return (x < 0 ? MINUS : "") + "$" + (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + u;
+  }
+  function pxDec(p) { const a = Math.abs(p); return a >= 10000 ? 1 : a >= 1000 ? 2 : a >= 100 ? 3 : a >= 1 ? 4 : 6; }
+  const fmtPx = (p) => num(p) ? fmtNum(p, pxDec(p)) : "—";
+  function fmtDur(s) {
+    if (!num(s)) return "—";
+    s = Math.max(0, s);
+    if (s < 60) return Math.round(s) + "s";
+    if (s < 3600) return Math.floor(s / 60) + "m " + String(Math.floor(s % 60)).padStart(2, "0") + "s";
+    const h = Math.floor(s / 3600);
+    return h + "h " + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + "m";
+  }
+  const utc = (ts) => num(ts) ? new Date(ts * 1000).toISOString().slice(11, 19) : "--:--:--";
+  function niceTicks(lo, hi, n) {
+    const span = hi - lo;
+    if (!(span > 0) || !isFinite(span)) { const out = [lo]; out.step = 1; return out; }
+    const raw = span / Math.max(1, n);
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const r = raw / mag;
+    const step = (r >= 7.5 ? 10 : r >= 3.5 ? 5 : r >= 1.5 ? 2 : 1) * mag;
+    const out = [];
+    for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toPrecision(12));
+    out.step = step;
+    return out;
+  }
+  const stepDec = (step) => Math.max(0, Math.min(6, Math.ceil(-Math.log10(step) - 1e-9)));
+  const KIND = {
+    ENTER_LONG: ["LONG", "long"], ENTER_SHORT: ["SHORT", "short"], EXIT: ["EXIT", "exit"],
+    HOLD: ["HOLD", "hold"], STAND_ASIDE: ["STAND ASIDE", "aside"],
+  };
+  const actColor = (kind) => ({ ENTER_LONG: C.up, ENTER_SHORT: C.down, EXIT: C.amber, HOLD: C.jev }[kind] || C["line-2"]);
+  const empty = (h, text) => `<div class="empty" style="min-height:${h}px">${esc(text)}</div>`;
+
+  // ------------------------------------------------------------------ data
+  async function api(path, method = "GET") {
+    const headers = TOKEN ? { "x-helix-token": TOKEN } : {};
+    const r = await fetch(path, { method, headers, cache: "no-store" });
+    if (r.status === 401) throw new Error("unauthorized");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+  async function poll() {
+    try {
+      const s = await api("/api/state");
+      ui.conn = { ok: true, err: null };
+      render(s);
+    } catch (e) {
+      ui.conn = { ok: false, err: e.message || String(e) };
+      try { renderBanners(S); } catch (err) { console.error(err); }
+    } finally {
+      const ms = S && S.engine && S.engine.refresh_ms ? S.engine.refresh_ms : 1000;
+      setTimeout(poll, clamp(ms, 250, 10000));
+    }
+  }
+  async function control(path) {
+    if (PREVIEW) return;
+    try { await api(path, "POST"); render(await api("/api/state")); } catch (e) { ui.conn = { ok: false, err: e.message }; renderBanners(S); }
+  }
+  function selectCoin(c) {
+    ui.sel = c; store.set("sel", c);
+    if (S) render(S);
+  }
+
+  // ------------------------------------------------------------------ render loop
+  const RENDERERS = [
+    ["top", renderTop], ["banners", renderBanners], ["ticker", renderTicker], ["kpis", renderKpis],
+    ["markets", renderMarkets], ["stream", renderStream], ["equity", renderEquity], ["funnel", renderFunnel],
+    ["latency", renderLatency], ["calibration", renderCalib], ["blocks", renderBlocks], ["exits", renderExits], ["risk", renderRisk],
+    ["blotter", renderBlotter], ["tape", renderTape], ["log", renderLog], ["opus", renderOpus],
+    ["console", renderConsole], ["status", renderStatus],
+  ];
+  function render(s) {
+    if (!s || !s.config) return;
+    S = s;
+    const coins = s.config.coins || [];
+    if (!ui.sel || !coins.includes(ui.sel)) ui.sel = coins[0];
+    rememberRisk(s);
+    for (const [name, fn] of RENDERERS) {
+      try { fn(s); } catch (err) { console.error("render " + name, err); }
+    }
+  }
+  function rememberRisk(s) {
+    for (const c of s.config.coins) {
+      const d = s.markets[c] && s.markets[c].decision;
+      if (!d || !d.risk) continue;
+      const r = d.risk.jev ? { book: "jev", ...d.risk.jev } : d.risk.baseline ? { book: "baseline", ...d.risk.baseline } : null;
+      if (r) ui.lastRisk[c] = { ts: d.ts, ...r };
+    }
+  }
+
+  // ------------------------------------------------------------------ command bar + banners
+  function renderTop(S) {
+    const f = S.feed || {}, j = S.jev || {}, e = S.engine || {};
+    const sim = f.venue === "simulated";
+    const srcs = Object.values(f.sources || {});
+    const rest = srcs.includes("rest");
+    let fdot = "ok", ftxt;
+    if (sim) { fdot = "warn"; ftxt = "SIMULATED"; }
+    else if (f.connected) { fdot = rest ? "warn" : "ok"; ftxt = "WS" + (num(f.msgs_per_s) ? ` ${f.msgs_per_s.toFixed(0)} msg/s` : ""); }
+    else if (rest) { fdot = "warn"; ftxt = "REST BACKUP"; }
+    else { fdot = "bad"; ftxt = "DISCONNECTED"; }
+    const p50 = num(j.p50_ms) ? ` · ${Math.round(j.p50_ms)} ms` : "";
+    let jdot = "warn", jtxt;
+    if (!j.provider) jtxt = "NO KEY · RULES";
+    else if (j.status === "mock") jtxt = "MOCK ANSWERS" + p50;
+    else if (j.status === "ok") { jdot = "ok"; jtxt = (j.model_seen || j.model_pinned) + p50; }
+    else if (j.status === "late") jtxt = "LATE" + p50;
+    else if (j.status === "budget") jtxt = "BUDGET HIT · RULES";
+    else if (j.status === "circuit") { jdot = "bad"; jtxt = `PAUSED ${Math.ceil(j.circuit_s || 0)}s · RULES`; }
+    else if (j.status === "error") { jdot = "bad"; jtxt = "ERROR · RULES"; }
+    else { jdot = ""; jtxt = "WAITING"; }
+    const edot = e.status === "running" ? "ok" : e.status === "degraded" ? "warn" : "bad";
+    const etxt = e.status === "running" ? `RUNNING<span class="pr"> · ${fmtInt(e.decisions_per_min)}/min</span>` : e.status === "degraded" ? `DEGRADED<span class="pr"> · ${e.errors_in_row} errors</span>` : "PAUSED";
+    const net = (S.config.network || "mainnet").toUpperCase();
+    $("#pills").innerHTML =
+      `<span class="pill opt"><b>VENUE</b>HYPERLIQUID ${sim ? "SIM" : net}</span>` +
+      `<span class="pill"><i class="dot ${fdot}${fdot === "ok" ? " live" : ""}"></i><b>FEED</b>${esc(ftxt)}</span>` +
+      `<span class="pill"><i class="dot ${jdot}"></i><b>JEV</b>${esc(jtxt)}</span>` +
+      `<span class="pill keep"><i class="dot ${edot}${edot === "ok" ? " live" : ""}"></i><b>ENGINE</b>${etxt}</span>`;
+    $("#clock").innerHTML = `${utc(S.ts)}<b>UTC</b>`;
+    const mode = PREVIEW ? "preview" : e.status === "paused" ? "paused" : ui.confirmKill ? "confirm" : "armed";
+    if (mode !== ui.killMode) {
+      ui.killMode = mode;
+      const box = $("#killBox");
+      if (mode === "preview") box.innerHTML = `<button class="btn kill" type="button" disabled title="Controls are disabled in the preview">Kill switch</button>`;
+      else if (mode === "paused") {
+        box.innerHTML = `<button class="btn go" type="button" id="resumeBtn">Resume trading</button>`;
+        $("#resumeBtn").onclick = () => control("/api/resume");
+      } else if (mode === "confirm") {
+        box.innerHTML = `<span class="confirm">Flatten everything and pause?<button class="btn solid" type="button" id="killYes">Kill</button><button class="btn" type="button" id="killNo">Cancel</button></span>`;
+        $("#killYes").onclick = () => { ui.confirmKill = false; control("/api/kill"); };
+        $("#killNo").onclick = () => { ui.confirmKill = false; renderTop(S); };
+        $("#killNo").focus();
+      } else {
+        box.innerHTML = `<button class="btn kill" type="button" id="killBtn">Kill switch</button>`;
+        $("#killBtn").onclick = () => { ui.confirmKill = true; renderTop(S); };
+      }
+    }
+  }
+
+  function renderBanners(S) {
+    const out = [];
+    if (!ui.conn.ok) {
+      if (ui.conn.err === "unauthorized") out.push(`<div class="banner bad"><span class="bt">Locked</span><span>This engine needs a token. Add <b>?token=YOUR_HELIX_TOKEN</b> to the address and reload.</span></div>`);
+      else out.push(`<div class="banner bad"><span class="bt">Offline</span><span>Lost contact with the HELIX engine (${esc(ui.conn.err)}). Retrying every second. The figures below are frozen.</span></div>`);
+    }
+    if (S) {
+      if (PREVIEW) out.push(`<div class="banner sim"><span class="bt">Simulated replay</span><span>Recorded from the demo engine: simulated order books and mock Jev answers. Nothing here is live data or a forecast of results. Frame ${ui.frame + 1}/${FRAMES.length}.</span></div>`);
+      else if (S.demo) out.push(`<div class="banner sim"><span class="bt">Simulated market</span><span>Demo mode: fake prices and mock Jev answers. Run start.bat for live Hyperliquid data.</span></div>`);
+      if (S.engine && S.engine.status === "paused") out.push(`<div class="banner bad"><span class="bt">Trading paused</span><span>${esc(S.engine.pause_reason || "Kill switch")}. Positions were flattened and no new orders go out until you resume.</span></div>`);
+      for (const [name, b] of Object.entries(S.books || {})) {
+        const lab = name === "jev" ? "Jev book" : "Baseline book";
+        if (b.killed) out.push(`<div class="banner bad"><span class="bt">${lab} stopped</span><span>${esc(b.kill_reason || "Kill switch")}. Review, then press Resume.</span></div>`);
+        else if (b.daily_stop) out.push(`<div class="banner warn"><span class="bt">${lab} daily stop</span><span>Daily loss limit reached. No new entries until 00:00 UTC.</span></div>`);
+      }
+      if (S.jev && S.jev.budget_hit) out.push(`<div class="banner warn"><span class="bt">Jev budget</span><span>Today's Jev budget of $${esc(S.jev.budget_usd)} is used. Fallback rules trade until 00:00 UTC.</span></div>`);
+    }
+    const html = out.join("");
+    const el = $("#banners");
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
+  // ------------------------------------------------------------------ ticker
+  function sparkSVG(vals, w, h, color) {
+    if (!vals || vals.length < 2) return "";
+    let lo = Infinity, hi = -Infinity;
+    for (const v of vals) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    const sp = hi - lo || 1;
+    let d = "";
+    vals.forEach((v, i) => { d += (i ? "L" : "M") + (1 + i * (w - 2) / (vals.length - 1)).toFixed(1) + " " + (h - 2 - (v - lo) / sp * (h - 4)).toFixed(1); });
+    return `<path d="${d}L${w - 1} ${h}L1 ${h}Z" fill="${color}" fill-opacity=".12"/><path d="${d}" fill="none" stroke="${color}" stroke-width="1.3" vector-effect="non-scaling-stroke"/>`;
+  }
+  function thin(arr, n) {
+    if (arr.length <= n) return arr;
+    const out = [], step = (arr.length - 1) / (n - 1);
+    for (let i = 0; i < n; i++) out.push(arr[Math.round(i * step)]);
+    return out;
+  }
+  function flash(el, key, px, store) {
+    const prev = store[key];
+    store[key] = px;
+    if (!num(prev) || !num(px) || prev === px) return;
+    el.classList.remove("flash-up", "flash-dn");
+    void el.offsetWidth;
+    el.classList.add(px > prev ? "flash-up" : "flash-dn");
+    setTimeout(() => el.classList.remove("flash-up", "flash-dn"), 260);
+  }
+  function renderTicker(S) {
+    const el = $("#ticker"), coins = S.config.coins;
+    el.style.setProperty("--n", coins.length);
+    if (el.dataset.coins !== coins.join(",")) {
+      el.dataset.coins = coins.join(",");
+      el.innerHTML = coins.map(c => `<button class="tk" type="button" data-coin="${esc(c)}" aria-label="Show ${esc(c)}">
+        <span class="sym">${esc(c)}<small>PERP</small></span><span class="px" data-f="px">—</span><span class="chg" data-f="chg"></span>
+        <svg viewBox="0 0 84 24" preserveAspectRatio="none" data-f="spark" aria-hidden="true"></svg>
+        <span class="kv" data-f="fund"></span><span class="kv oi" data-f="oi"></span><span class="kv opt" data-f="vol"></span></button>`).join("");
+      $$(".tk", el).forEach(b => b.addEventListener("click", () => selectCoin(b.dataset.coin)));
+    }
+    for (const b of $$(".tk", el)) {
+      const c = b.dataset.coin, m = S.markets[c] || {};
+      b.classList.toggle("sel", c === ui.sel);
+      const px = b.querySelector('[data-f="px"]');
+      px.textContent = fmtPx(m.mid);
+      flash(px, c, m.mid, ui.lastTk);
+      const ch = m.change_24h_pct;
+      b.querySelector('[data-f="chg"]').innerHTML = num(ch) ? `<span class="${cls(ch)}">${ch >= 0 ? "▲" : "▼"} ${Math.abs(ch).toFixed(2)}%</span>` : "";
+      const v = (m.mids && m.mids.v) || [];
+      const first = v[0], last = v[v.length - 1];
+      b.querySelector('[data-f="spark"]').innerHTML = sparkSVG(thin(v, 84), 84, 24, last >= first ? C.up : C.down);
+      b.querySelector('[data-f="fund"]').innerHTML = num(m.funding_hr) ? `<b>FUND</b>${fmtSigned(m.funding_hr * 1e4, 3)}<small>bp/h</small>` : "";
+      b.querySelector('[data-f="oi"]').innerHTML = num(m.open_interest) && num(m.mid) ? `<b>OI</b>${fmtCompact(m.open_interest * m.mid)}` : "";
+      b.querySelector('[data-f="vol"]').innerHTML = num(m.day_volume) ? `<b>24H VOL</b>${fmtCompact(m.day_volume)}` : "";
+    }
+  }
+
+  // ------------------------------------------------------------------ KPI band
+  function tile(k, v, s, viz) {
+    return `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div><div class="viz">${viz || ""}</div></div>`;
+  }
+  function miniLine(vals, color) {
+    if (vals.length < 2) return "";
+    return `<svg viewBox="0 0 160 28" preserveAspectRatio="none" aria-hidden="true">${sparkSVG(vals, 160, 28, color)}</svg>`;
+  }
+  function miniBars(series, colors) {
+    // series: array of arrays (stacked), colors per stack layer
+    const n = series.length;
+    if (!n) return "";
+    const tot = series.map(s => s.reduce((a, b) => a + b, 0));
+    const mx = Math.max(1, ...tot);
+    const bw = 160 / n;
+    let out = "";
+    series.forEach((stack, i) => {
+      let y = 28;
+      stack.forEach((v, li) => {
+        if (!v) return;
+        const h = v / mx * 26;
+        y -= h;
+        out += `<rect x="${(i * bw + 0.6).toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(0.8, bw - 1.2).toFixed(2)}" height="${h.toFixed(2)}" fill="${colors[li]}"/>`;
+      });
+    });
+    return `<svg viewBox="0 0 160 28" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="27" width="160" height="1" fill="${C.line}"/>${out}</svg>`;
+  }
+  function buckets(S, width, count, pick) {
+    const out = Array.from({ length: count }, () => [0, 0]);
+    for (const c of S.config.coins) {
+      for (const r of ((S.markets[c] || {}).ribbon || [])) {
+        const i = count - 1 - Math.floor(r[0] / width);
+        if (i >= 0 && i < count) pick(out[i], r);
+      }
+    }
+    return out;
+  }
+  function renderKpis(S) {
+    const J = S.books.jev, B = S.books.baseline, E = S.engine, Jv = S.jev;
+    const t = [];
+    const curve = (J.equity_curve || []).slice(-150).map(p => p[1]);
+    t.push(tile("Jev book", fmtUsd(J.equity), `<span class="${cls(J.pnl)}">${fmtUsdSigned(J.pnl)} · ${fmtSigned(J.pnl_pct, 2)}%</span>`,
+      miniLine(curve, J.pnl >= 0 ? C.up : C.down)));
+    const edge = S.edge.pnl;
+    const scale = Math.max(Math.abs(J.pnl), Math.abs(B.pnl), 1);
+    const fr = clamp(edge / scale, -1, 1);
+    const tug = `<div class="tug"><i style="left:${fr >= 0 ? 50 : 50 + fr * 50}%;width:${Math.abs(fr) * 50}%;background:${fr >= 0 ? C.jev : C.base}"></i><span style="left:0">BASE</span><span style="right:0">JEV</span></div>`;
+    t.push(tile("Edge vs baseline", `<span class="${cls(edge)}">${fmtUsdSigned(edge)}</span>`,
+      `${edge > 0 ? "Jev ahead" : edge < 0 ? "Baseline ahead" : "Level"} · ${fmtSigned(S.edge.pnl_pct, 2)} pts`, tug));
+    const dec = buckets(S, 10, 18, (b) => { b[0]++; });
+    t.push(tile("Decisions / min", fmtInt(E.decisions_per_min),
+      `${S.config.coins.length} mkts × ${Math.round(60000 / E.interval_ms)} a min`, miniBars(dec, [C.jev])));
+    const fills = buckets(S, 10, 18, (b, r) => { if (r[3] === 2 || r[3] === 3) b[0]++; if (r[4] === 2 || r[4] === 3) b[1]++; });
+    t.push(tile("Fills / min", fmtInt(E.entries_per_min), `Jev ${J.entries_last_min} · base ${B.entries_last_min}`,
+      miniBars(fills, [C.jev, C.base])));
+    const fj = J.funnel;
+    const filt = fj.decisions ? 100 * (1 - fj.fills / fj.decisions) : 0;
+    const lg = (n) => n > 0 ? Math.log10(n + 1) / Math.log10(Math.max(fj.decisions, 1) + 1) : 0;
+    const fun = ["decisions", "signals", "risk_pass", "fills"].map((k, i) =>
+      `<rect x="0" y="${i * 7}" width="${(lg(fj[k]) * 160).toFixed(1)}" height="5" fill="${C.jev}" fill-opacity="${(1 - i * 0.2).toFixed(2)}"/>`).join("");
+    t.push(tile("Filtered out", `${filt.toFixed(1)}<small>%</small>`, `${fmtInt(fj.signals)} signals → ${fmtInt(fj.fills)} fills`,
+      `<svg viewBox="0 0 160 28" preserveAspectRatio="none" aria-hidden="true">${fun}</svg>`));
+    const cost = (J.fees || 0) + (J.funding || 0);
+    const cm = Math.max(Math.abs(J.gross || 0), cost, 1);
+    const cb = `<svg viewBox="0 0 160 28" preserveAspectRatio="none" aria-hidden="true">
+      <rect x="0" y="3" width="${(Math.abs(J.gross || 0) / cm * 160).toFixed(1)}" height="9" fill="${(J.gross || 0) >= 0 ? C.up : C.down}" fill-opacity=".85"/>
+      <rect x="0" y="16" width="${(cost / cm * 160).toFixed(1)}" height="9" fill="${C.warn}" fill-opacity=".85"/></svg>`;
+    t.push(tile("Fees + funding", fmtUsd(cost), `gross <span class="${cls(J.gross)}">${fmtUsdSigned(J.gross)}</span> closed`, cb));
+    const mx = Math.max(Jv.deadline_ms * 1.25, (Jv.p95_ms || 0) * 1.1, 1);
+    const bul = `<div class="bar1"><i style="width:${clamp((Jv.p95_ms || 0) / mx * 100, 0, 100)}%;opacity:.35"></i><i style="width:${clamp((Jv.p50_ms || 0) / mx * 100, 0, 100)}%"></i><b style="left:${(Jv.deadline_ms / mx * 100).toFixed(1)}%"></b></div>`;
+    t.push(tile("Jev latency", num(Jv.p50_ms) ? `${Math.round(Jv.p50_ms)}<small>ms p50</small>` : "—",
+      `p95 ${num(Jv.p95_ms) ? Math.round(Jv.p95_ms) : "—"} · limit ${Jv.deadline_ms}`, Jv.calls ? bul : ""));
+    const used = Jv.budget_usd ? clamp(Jv.cost_day / Jv.budget_usd, 0, 1) : 0;
+    const spendSub = Jv.provider === "mock" ? "mock answers: free" : !Jv.provider ? "no key · fallback rules" : `${Jv.budget_usd ? `of $${Jv.budget_usd}/day` : "no daily cap"} · ${fmtInt(Jv.tokens_day)} tokens`;
+    t.push(tile("Jev spend today", fmtUsd(Jv.cost_day, 2), spendSub,
+      `<div class="bar1"><i style="width:${(used * 100).toFixed(1)}%;background:${used > 0.85 ? C.warn : C.jev}"></i></div>`));
+    $("#kpis").innerHTML = t.join("");
+  }
+
+  // ------------------------------------------------------------------ markets
+  function marketSkeleton(c) {
+    return `<article class="pane mkt" data-coin="${esc(c)}">
+      <header class="mh">
+        <div class="mh-id"><span class="sym">${esc(c)}<small>PERP</small></span><span class="src" data-f="src"></span></div>
+        <div class="mh-px"><span class="px" data-f="px">—</span><span class="chg" data-f="chg"></span></div>
+      </header>
+      <div class="mstats" data-f="stats"></div>
+      <div class="mbody">
+        <div class="mcol">
+          <div class="chart" data-f="price"></div>
+          <div class="mrow">
+            <div><div class="sect"><span>Order book</span><span data-f="dmeta"></span></div><div class="chart" data-f="depth"></div></div>
+            <div><div class="sect"><span>Microstructure</span><span></span></div><div class="micro" data-f="micro"></div></div>
+          </div>
+        </div>
+        <div class="mcol">
+          <div><div class="sect"><span>Jev · six answers</span><span data-f="jmeta"></span></div><div data-f="batx"></div><div class="bat" data-f="bat"></div></div>
+          <div class="acts" data-f="acts"></div>
+          <div class="posb" data-f="pos"></div>
+        </div>
+      </div>
+    </article>`;
+  }
+  function renderMarkets(S) {
+    const el = $("#markets"), coins = S.config.coins;
+    el.style.setProperty("--n", coins.length);
+    if (el.dataset.coins !== coins.join(",")) {
+      el.dataset.coins = coins.join(",");
+      el.innerHTML = coins.map(marketSkeleton).join("");
+      $("#mtabs").innerHTML = coins.map(c => `<button type="button" data-coin="${esc(c)}"><i></i><b>${esc(c)}</b><span></span></button>`).join("");
+      $$("#mtabs button").forEach(b => b.addEventListener("click", () => selectCoin(b.dataset.coin)));
+    }
+    for (const b of $$("#mtabs button")) {
+      const m = S.markets[b.dataset.coin] || {};
+      b.classList.toggle("on", b.dataset.coin === ui.sel);
+      b.querySelector("span").textContent = fmtPx(m.mid);
+      b.style.setProperty("--st", stripeColor(S, b.dataset.coin));
+    }
+    for (const panel of $$(".mkt", el)) {
+      const c = panel.dataset.coin;
+      panel.classList.toggle("is-active", c === ui.sel);
+      try { updateMarket(panel, S.markets[c] || { coin: c, ready: false }, S); } catch (err) { console.error("market " + c, err); }
+    }
+  }
+  function stripeColor(S, coin) {
+    const pos = (S.books.jev.positions || []).find(p => p.coin === coin);
+    if (pos) return pos.side > 0 ? C.up : C.down;
+    const d = (S.markets[coin] || {}).decision;
+    return d ? actColor(d.jev_action.kind) : C["line-2"];
+  }
+  function updateMarket(panel, m, S) {
+    const f = (k) => panel.querySelector(`[data-f="${k}"]`);
+    const coin = m.coin;
+    const pos = (S.books.jev.positions || []).find(p => p.coin === coin);
+    const bpos = (S.books.baseline.positions || []).find(p => p.coin === coin);
+    const d = m.decision || null;
+    panel.style.setProperty("--st", stripeColor(S, coin));
+    const maxAge = S.config.risk.max_data_age_ms / 1000;
+    const age = m.data_age_s;
+    const ac = !num(age) ? "" : age > maxAge ? "bad" : age > maxAge / 2 ? "warn" : "ok";
+    f("src").innerHTML = `<i class="${ac}">${esc((m.source || "—").toUpperCase())}</i>${num(age) ? age.toFixed(1) + "s old" : ""}`;
+    const pxEl = f("px");
+    pxEl.textContent = fmtPx(m.mid);
+    flash(pxEl, coin, m.mid, ui.lastPx);
+    const ch = m.change_24h_pct;
+    f("chg").innerHTML = num(ch) ? `<span class="${cls(ch)}">${fmtSigned(ch, 2)}%</span> <span class="mut">24h</span>` : "";
+    const fe = m.features || {};
+    f("stats").innerHTML =
+      `<span><b>SPREAD</b>${num(m.spread_bps) ? m.spread_bps.toFixed(2) : "—"} bp</span>` +
+      `<span><b>FUND</b>${num(m.funding_hr) ? fmtSigned(m.funding_hr * 1e4, 3) : "—"} bp/h</span>` +
+      `<span><b>OI</b>${num(m.open_interest) && num(m.mid) ? fmtCompact(m.open_interest * m.mid) : "—"}</span>` +
+      `<span><b>PREM</b>${num(fe.premium_bps) ? fmtSigned(fe.premium_bps, 1) : "—"} bp</span>`;
+    const pe = f("price"), W = pe.clientWidth;
+    if (W > 0) pe.innerHTML = priceSVG(m, S, W, pos);
+    const de = f("depth"), DW = de.clientWidth;
+    if (DW > 0) de.innerHTML = depthSVG(m, DW);
+    f("dmeta").textContent = num(fe.depth_10bps_usd) ? `${fmtCompact(fe.depth_10bps_usd)} ±10bp` : "";
+    f("micro").innerHTML = microHTML(m);
+    f("jmeta").textContent = d ? (num(d.latency_ms) ? `${Math.round(d.latency_ms)} ms · ${d.jev_status}` : d.jev_status) : "";
+    const [bx, bat, dim] = batteryHTML(m, d, S);
+    f("batx").innerHTML = bx;
+    const be = f("bat");
+    be.innerHTML = bat;
+    be.classList.toggle("dim", dim);
+    f("acts").innerHTML = actsHTML(m, d, S);
+    f("pos").innerHTML = posHTML(pos, bpos, S);
+  }
+
+  function priceSVG(m, S, W, pos) {
+    W = Math.max(W, 160);                       // never a negative plot width while the layout settles
+    const H = 214, x0 = 1, x1 = W - 70, top = 8, ph = 152, rbY = top + ph + 9, rbH = 15, axY = rbY + rbH + 15;
+    const span = 300, now = S.ts;
+    const v = (m.mids && m.mids.v) || [];
+    if (v.length < 2) return empty(H - 20, "Collecting prices…");
+    const t0 = m.mids.t0;
+    const pts = v.map((p, i) => [now - (t0 + i), p]);
+    if (num(m.mid)) pts.push([0, m.mid]);
+    const xs = (ago) => x1 - (ago / span) * (x1 - x0);
+    let lo = Infinity, hi = -Infinity;
+    for (const [, p] of pts) { if (p < lo) lo = p; if (p > hi) hi = p; }
+    if (pos) for (const p of [pos.entry, pos.stop, pos.target]) if (num(p)) { lo = Math.min(lo, p); hi = Math.max(hi, p); }
+    const mk = (m.markers || []).filter(k => now - k.ts <= span && now - k.ts >= -2);
+    for (const k of mk) { lo = Math.min(lo, k.px); hi = Math.max(hi, k.px); }
+    const ref = m.mid || v[v.length - 1];
+    const minSpan = ref * 6e-4;
+    if (hi - lo < minSpan) { const c = (hi + lo) / 2; lo = c - minSpan / 2; hi = c + minSpan / 2; }
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const ys = (p) => top + ph - ((p - lo) / (hi - lo)) * ph;
+    const gid = "pg" + String(m.coin).replace(/\W/g, "");
+    const last = pts[pts.length - 1][1], yl = ys(last);
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(m.coin)} price and Jev bias, last five minutes">`;
+    s += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.text}" stop-opacity=".14"/><stop offset="1" stop-color="${C.text}" stop-opacity="0"/></linearGradient></defs>`;
+    const tk = niceTicks(lo, hi, 4), dec = stepDec(tk.step);
+    for (const t of tk) {
+      const y = ys(t);
+      if (y < top - 0.5 || y > top + ph + 0.5) continue;
+      s += `<line x1="${x0}" x2="${x1}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${C.line}"/>`;
+      if (Math.abs(y - yl) > 12) s += `<text x="${x1 + 8}" y="${(y + 3.5).toFixed(1)}" class="ax">${fmtNum(t, dec)}</text>`;
+    }
+    for (const a of [60, 120, 180, 240]) { const x = xs(a).toFixed(1); s += `<line x1="${x}" x2="${x}" y1="${top}" y2="${top + ph}" stroke="${C.line}" stroke-dasharray="2 3"/>`; }
+    s += `<line x1="${x0}" x2="${x1}" y1="${top + ph}" y2="${top + ph}" stroke="${C["line-2"]}"/>`;
+    if (pos) {
+      const xe = clamp(xs(now - pos.opened), x0, x1);
+      const ye = ys(pos.entry), ysl = ys(pos.stop), ytp = ys(pos.target);
+      s += `<rect x="${xe.toFixed(1)}" y="${Math.min(ye, ytp).toFixed(1)}" width="${(x1 - xe).toFixed(1)}" height="${Math.abs(ytp - ye).toFixed(1)}" fill="${C.up}" fill-opacity=".09"/>`;
+      s += `<rect x="${xe.toFixed(1)}" y="${Math.min(ye, ysl).toFixed(1)}" width="${(x1 - xe).toFixed(1)}" height="${Math.abs(ysl - ye).toFixed(1)}" fill="${C.down}" fill-opacity=".09"/>`;
+      s += `<line x1="${xe.toFixed(1)}" x2="${x1}" y1="${ytp.toFixed(1)}" y2="${ytp.toFixed(1)}" stroke="${C.up}" stroke-dasharray="3 3"/>`;
+      s += `<line x1="${xe.toFixed(1)}" x2="${x1}" y1="${ysl.toFixed(1)}" y2="${ysl.toFixed(1)}" stroke="${C.down}" stroke-dasharray="3 3"/>`;
+      s += `<line x1="${xe.toFixed(1)}" x2="${x1}" y1="${ye.toFixed(1)}" y2="${ye.toFixed(1)}" stroke="${C.jev}" stroke-width="1.2"/>`;
+      const up = ytp < ye;
+      s += `<text x="${x1 - 4}" y="${(up ? ytp - 4 : ytp + 11).toFixed(1)}" text-anchor="end" class="ax" style="fill:${C.up}">TP ${fmtPx(pos.target)}</text>`;
+      s += `<text x="${x1 - 4}" y="${(up ? ysl + 11 : ysl - 4).toFixed(1)}" text-anchor="end" class="ax" style="fill:${C.down}">SL ${fmtPx(pos.stop)}</text>`;
+    }
+    let d = "";
+    pts.forEach(([ago, p], i) => { d += (i ? "L" : "M") + xs(ago).toFixed(1) + " " + ys(p).toFixed(1); });
+    const xa = xs(pts[0][0]).toFixed(1), xb = xs(pts[pts.length - 1][0]).toFixed(1);
+    s += `<path d="${d}L${xb} ${top + ph}L${xa} ${top + ph}Z" fill="url(#${gid})"/>`;
+    s += `<path d="${d}" fill="none" stroke="${C.text}" stroke-width="1.35" stroke-linejoin="round"/>`;
+    const drawMk = (k) => {
+      const x = xs(now - k.ts).toFixed(1), y = ys(k.px).toFixed(1), isJ = k.book === "jev";
+      const col = isJ ? C.jev : C.base, sc = isJ ? 1 : 0.8, op = isJ ? 1 : 0.75;
+      const what = k.kind === "entry" ? (k.side > 0 ? "long entry" : "short entry") : (k.win ? "exit, win" : "exit, loss");
+      const ttl = `<title>${isJ ? "Jev" : "Baseline"} ${what} at ${fmtPx(k.px)}, ${fmtDur(now - k.ts)} ago</title>`;
+      if (k.kind === "entry") {
+        const a = 5.5 * sc, b = 4.8 * sc, X = +x, Y = +y;
+        const pts = k.side > 0 ? `${X},${Y - a} ${X - b},${Y + a * 0.75} ${X + b},${Y + a * 0.75}` : `${X},${Y + a} ${X - b},${Y - a * 0.75} ${X + b},${Y - a * 0.75}`;
+        return `<polygon points="${pts}" fill="${col}" fill-opacity="${op}" stroke="${C.bg}" stroke-width="1">${ttl}</polygon>`;
+      }
+      return `<circle cx="${x}" cy="${y}" r="${(3.4 * sc).toFixed(1)}" fill="${k.win ? C.up : C.down}" stroke="${col}" stroke-width="1.6" opacity="${op}">${ttl}</circle>`;
+    };
+    for (const k of mk) if (k.book !== "jev") s += drawMk(k);
+    for (const k of mk) if (k.book === "jev") s += drawMk(k);
+    s += `<circle cx="${xb}" cy="${yl.toFixed(1)}" r="2.8" fill="${C.amber}"/>`;
+    s += `<rect x="${x1 + 3}" y="${(yl - 8.5).toFixed(1)}" width="${W - x1 - 4}" height="17" rx="1.5" fill="${C.amber}"/>`;
+    s += `<text x="${x1 + 8}" y="${(yl + 3.8).toFixed(1)}" class="ax tagt">${fmtPx(last)}</text>`;
+    // Jev bias ribbon: each second coloured by P(up) - P(down)
+    s += `<rect x="${x0}" y="${rbY}" width="${(x1 - x0).toFixed(1)}" height="${rbH}" fill="${C.idle}"/>`;
+    const cw = (x1 - x0) / span;
+    let lastBias = null;
+    for (const r of (m.ribbon || [])) {
+      const ago = r[0];
+      if (ago < 0 || ago >= span) continue;
+      let fill, op;
+      if (r[1] == null || r[2] == null) {
+        if (r[3] === 6) { fill = C.late; op = 0.55; } else if (r[3] === 7) { fill = C.fallback; op = 0.8; } else if (r[3] === 8) { fill = C.paused; op = 0.9; } else continue;
+      } else {
+        const b = r[1] - r[2];
+        lastBias = b;
+        fill = b >= 0 ? C.up : C.down;
+        op = (0.1 + 0.9 * Math.min(1, Math.abs(b))).toFixed(2);
+      }
+      s += `<rect x="${xs(ago + 1).toFixed(2)}" y="${rbY}" width="${(cw + 0.35).toFixed(2)}" height="${rbH}" fill="${fill}" fill-opacity="${op}"/>`;
+    }
+    s += `<text x="${x1 + 8}" y="${rbY + 11}" class="axc">BIAS</text>`;
+    if (lastBias != null) s += `<text x="${W - 2}" y="${rbY + 11}" text-anchor="end" class="ax" style="fill:${lastBias >= 0 ? C.up : C.down}">${fmtSigned(lastBias, 2)}</text>`;
+    const marks = W < 420 ? [300, 180, 60, 0] : [300, 240, 180, 120, 60, 0];
+    for (const a of marks) {
+      const anchor = a === 300 ? "start" : a === 0 ? "end" : "middle";
+      s += `<text x="${xs(a).toFixed(1)}" y="${axY}" text-anchor="${anchor}" class="ax">${a ? MINUS + a / 60 + "m" : "now"}</text>`;
+    }
+    return s + "</svg>";
+  }
+
+  function depthSVG(m, W) {
+    const H = 96, top = 14, bot = 14;
+    const bids = (m.book && m.book.bids) || [], asks = (m.book && m.book.asks) || [];
+    if (!bids.length || !asks.length) return empty(H - 10, "No book yet");
+    const mid = (bids[0][0] + asks[0][0]) / 2;
+    let cb = 0, ca = 0;
+    const bp = bids.map(([p, q]) => [p, (cb += p * q)]);
+    const apx = asks.map(([p, q]) => [p, (ca += p * q)]);
+    const maxBps = Math.max((mid - bp[bp.length - 1][0]) / mid * 1e4, (apx[apx.length - 1][0] - mid) / mid * 1e4, 0.5);
+    const xs = (p) => W / 2 + ((p - mid) / mid * 1e4) / maxBps * (W / 2 - 2);
+    const ymax = Math.max(cb, ca) * 1.06;
+    const ys = (c) => top + (H - top - bot) * (1 - c / ymax);
+    const side = (pts, edge) => {
+      let d = `M${xs(pts[0][0]).toFixed(1)} ${ys(0).toFixed(1)}L${xs(pts[0][0]).toFixed(1)} ${ys(pts[0][1]).toFixed(1)}`;
+      for (let i = 1; i < pts.length; i++) d += `L${xs(pts[i][0]).toFixed(1)} ${ys(pts[i - 1][1]).toFixed(1)}L${xs(pts[i][0]).toFixed(1)} ${ys(pts[i][1]).toFixed(1)}`;
+      d += `L${edge} ${ys(pts[pts.length - 1][1]).toFixed(1)}L${edge} ${ys(0).toFixed(1)}Z`;
+      return d;
+    };
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(m.coin)} order book depth, 20 levels a side">`;
+    s += `<line x1="0" x2="${W}" y1="${ys(0)}" y2="${ys(0)}" stroke="${C["line-2"]}"/>`;
+    s += `<path d="${side(bp, 1)}" fill="${C.up}" fill-opacity=".16" stroke="${C.up}" stroke-width="1.2"/>`;
+    s += `<path d="${side(apx, W - 1)}" fill="${C.down}" fill-opacity=".16" stroke="${C.down}" stroke-width="1.2"/>`;
+    s += `<line x1="${W / 2}" x2="${W / 2}" y1="${top - 4}" y2="${ys(0)}" stroke="${C["text-3"]}" stroke-dasharray="2 2"/>`;
+    s += `<text x="1" y="9" class="ax" style="fill:${C.up}">${fmtCompact(cb)}</text><text x="${W - 1}" y="9" text-anchor="end" class="ax" style="fill:${C.down}">${fmtCompact(ca)}</text>`;
+    s += `<text x="1" y="${H - 2}" class="ax">${MINUS}${maxBps.toFixed(1)}bp</text><text x="${W / 2}" y="${H - 2}" text-anchor="middle" class="ax">mid</text><text x="${W - 1}" y="${H - 2}" text-anchor="end" class="ax">+${maxBps.toFixed(1)}bp</text>`;
+    return s + "</svg>";
+  }
+
+  function microHTML(m) {
+    const f = m.features, st = m.state || {};
+    if (!f) return empty(80, "Needs 2 minutes of book history");
+    const dvRow = (label, x, text, title) => {
+      const v = clamp(num(x) ? x : 0, -1, 1);
+      return `<div class="mr" title="${esc(title)}"><span class="ml">${label}</span><span class="dv"><i class="${v < 0 ? "n" : "p"}" style="left:${(v < 0 ? 50 + v * 50 : 50).toFixed(1)}%;width:${(Math.abs(v) * 50).toFixed(1)}%"></i></span><span class="mv">${text}</span></div>`;
+    };
+    const rtRow = (label, ratio, text, title) => {
+      const r = num(ratio) ? ratio : 1;
+      const c = r >= 1.5 ? "hot" : r <= 0.6 ? "cold" : "";
+      return `<div class="mr" title="${esc(title)}"><span class="ml">${label}</span><span class="rt"><i class="${c}" style="width:${clamp(r / 2, 0, 1) * 100}%"></i><b></b></span><span class="mv">${text}</span></div>`;
+    };
+    const R = Math.max(10, 3 * (f.vol_1s_bps || 0) * Math.sqrt(60));
+    return dvRow("Imb 5", f.imbalance_5, fmtSigned(f.imbalance_5, 2), "Top-5 levels: bid size vs ask size, -1 to +1") +
+      dvRow("Flow 15s", (f.flow_15s - 0.5) * 2, `${pct(f.flow_15s)} buy`, "Share of aggressive buying in the last 15 seconds") +
+      dvRow("Ret 60s", (f.ret_60s || 0) / R, `${fmtSigned(f.ret_60s, 1)}bp`, "Price change over the last 60 seconds") +
+      rtRow("Vol 1s", st.vol_60s_vs_300s, `${num(f.vol_1s_bps) ? f.vol_1s_bps.toFixed(2) : "—"} ×${num(st.vol_60s_vs_300s) ? st.vol_60s_vs_300s.toFixed(2) : "—"}`, "1-second volatility in bps; x = last minute vs last 5 minutes (middle tick = normal)") +
+      rtRow("Trades", st.trade_rate_vs_5m, `${num(f.trade_rate_15s) ? f.trade_rate_15s.toFixed(1) : "—"}/s ×${num(st.trade_rate_vs_5m) ? st.trade_rate_vs_5m.toFixed(2) : "—"}`, "Trades per second; x = vs the 5-minute rate") +
+      rtRow("Depth", f.depth_ratio, `×${num(f.depth_ratio) ? f.depth_ratio.toFixed(2) : "—"}`, "Book depth within 10 bps vs its recent median");
+  }
+
+  function batteryHTML(m, d, S) {
+    const P = S.config.policy;
+    const a = d && d.answers;
+    const row = (label, viz, val, title) => `<div class="br" title="${esc(title || "")}"><span class="bl">${label}</span>${viz}<span class="bn">${val}</span></div>`;
+    const stack = (probs, spec) => `<span class="stk">${spec.map(([k, lab, col, light]) => {
+      const p = (probs && probs[k]) || 0;
+      return `<i class="${light ? "lt" : ""}" style="width:${(p * 100).toFixed(1)}%;background:${col}">${p >= 0.2 ? lab : ""}</i>`;
+    }).join("")}</span>`;
+    const gauge = (p, thr) => `<span class="gauge"><i class="${num(p) && p >= thr ? "hot" : ""}" style="width:${num(p) ? (p * 100).toFixed(1) : 0}%"></i><b style="left:${thr * 100}%"></b></span>`;
+    const scale = (ans, labels, thr, red) => {
+      const probs = (ans && ans.probabilities) || {};
+      const cells = labels.map((lab, i) => `<i style="--a:${(8 + 80 * (probs[String(i)] || 0)).toFixed(0)}%">${lab}</i>`).join("");
+      const sc = ans && num(ans.score) ? ans.score : null;
+      return `<span class="scale${red ? " red" : ""}">${cells}<b class="th" style="left:${((thr + 0.5) / 4 * 100).toFixed(1)}%"></b>${sc != null ? `<b class="mk" style="left:${((sc + 0.5) / 4 * 100).toFixed(1)}%"></b>` : ""}</span>`;
+    };
+    const RG = [["trending", "TREND", C.jev], ["mean_reverting", "M-REV", C.teal], ["high_vol", "HI-VOL", C.warn], ["crisis", "CRISIS", C.down]];
+    const DIR = [["down", "DOWN", C.down], ["neutral", "FLAT", C["line-2"], true], ["up", "UP", C.up]];
+    const nice = { trending: "TREND", mean_reverting: "M-REV", high_vol: "HI-VOL", crisis: "CRISIS" };
+    let head = "";
+    if (!a) {
+      const st = d ? d.jev_status : "waiting";
+      const msg = m.error && !m.ready ? `No market data yet (${m.error}). Retrying.` : !m.ready ? "Warming up. Jev starts after 2 minutes of order-book history." : {
+        late: `The answer missed the ${S.jev.deadline_ms} ms deadline, so no new orders this second.`,
+        offline: "No TypeSafe key yet. The fallback rules trade instead.",
+        budget: "Today's Jev budget is used. The fallback rules trade until 00:00 UTC.",
+        circuit: "Jev is paused after repeated errors. The fallback rules trade meanwhile.",
+        error: "Jev returned an error. The fallback rules trade this second.",
+      }[st] || "Waiting for the first answer.";
+      const tag = m.ready ? st : m.error ? "no data" : "warm-up";
+      head = `<div class="batx"><span class="chip ${st === "late" ? "late" : m.error && !m.ready ? "block" : "aside"}">${esc(tag)}</span><span>${esc(msg)}</span></div>`;
+    }
+    const tox = a ? a.toxic_flow.p : null, liq = a ? a.liquidity_stressed.p : null;
+    const supported = s => s && s.probabilities ? (+s.probabilities["2"] || 0) + (+s.probabilities["3"] || 0) : null;  // P(level >= Supported)
+    const lsp = a ? supported(a.long_setup) : null, ssp = a ? supported(a.short_setup) : null;
+    const html =
+      row("Regime", stack(a && a.regime.probabilities, RG), a ? `${nice[a.regime.choice] || esc(a.regime.choice)} ${pct(a.regime.p)}` : "—", "Which regime the market is in. Crisis above " + pct(P.max_crisis_prob) + " blocks entries.") +
+      row("Direction", stack(a && a.direction.probabilities, DIR), a ? `<span class="${a.direction.choice === "up" ? "up" : a.direction.choice === "down" ? "dn" : "mut"}">${esc(a.direction.choice.toUpperCase())} ${pct(a.direction.p)}</span>` : "—", `Bias over the next ${S.config.horizon_s} s. Entries need ${pct(P.min_direction_prob)}; full size from ${pct(P.full_size_prob)}.`) +
+      row("Toxic flow", gauge(tox, P.toxic_flow_threshold), a ? `<span class="${tox >= P.toxic_flow_threshold ? "wrn" : ""}">${pct(tox)}</span>` : "—", `Chance the aggressive flow is informed. Tick = ${pct(P.toxic_flow_threshold)} limit.`) +
+      row("Liq stress", gauge(liq, P.max_liquidity_stress), a ? `<span class="${liq >= P.max_liquidity_stress ? "wrn" : ""}">${pct(liq)}</span>` : "—", `Chance the book is thinner than normal. Tick = ${pct(P.max_liquidity_stress)} limit.`) +
+      row("Long setup", gauge(lsp, P.min_setup_prob), a ? `<span class="${lsp >= P.min_setup_prob ? "up" : ""}">${pct(lsp)}</span>` : "—", `Chance a LONG setup is Supported or Strong. Entries need ${pct(P.min_setup_prob)}.`) +
+      row("Short setup", gauge(ssp, P.min_setup_prob), a ? `<span class="${ssp >= P.min_setup_prob ? "dn" : ""}">${pct(ssp)}</span>` : "—", `Chance a SHORT setup is Supported or Strong. Entries need ${pct(P.min_setup_prob)}.`) +
+      row("Inventory", scale(a && a.inventory_pressure, ["NONE", "MILD", "SKEW", "CUT"], P.exit_inventory_pressure, true), a ? `${a.inventory_pressure.score.toFixed(2)}<small>/3</small>` : "—", `How urgently to reduce the position. Exit at ${P.exit_inventory_pressure}/3.`);
+    return [head, html, !a];
+  }
+
+  function actsHTML(m, d, S) {
+    if (!d) return `<div class="ar"><span class="who jev">JEV</span><span class="chip aside">WAIT</span><span class="why">${m.ready ? "Waiting for the first decision" : "Warming up"}</span><span></span></div>`;
+    const arow = (who, wcls, act, meta) => {
+      const [lab, kc] = KIND[act.kind] || [act.kind, "aside"];
+      const reason = (act.reasons || []).join("; ");
+      const src = act.source === "fallback" ? `<span class="chip aside" title="Jev unavailable: fallback rules">RULES</span>` : "";
+      return `<div class="ar"><span class="who ${wcls}">${who}</span><span>${`<span class="chip ${kc}">${lab}${act.size && act.size < 1 && act.kind.startsWith("ENTER") ? " ½" : ""}</span>`}${src}</span><span class="why" title="${esc(reason)}">${esc(reason || "—")}</span><span class="lat">${meta}</span></div>`;
+    };
+    const conf = num(d.jev_action.confidence) ? `${pct(d.jev_action.confidence)} conf` : "";
+    let h = arow("JEV", "jev", d.jev_action, conf);
+    h += arow("BASE", "", d.baseline_action, "rules");
+    const r = ui.lastRisk[m.coin];
+    if (r) {
+      const book = r.book === "jev" ? "" : " (base)";
+      const ago = fmtDur(S.ts - r.ts) + " ago";
+      if (r.approved) {
+        const be = breakeven(r);
+        h += `<div class="ar"><span class="who">RISK</span><span class="chip pass">PASS${book}</span><span class="why" title="Breakeven win rate after fees: ${be != null ? pct(be) : "—"}">${fmtUsd(r.notional, 0)} · SL ${num(r.stop_bps) ? r.stop_bps.toFixed(1) : "—"} / TP ${num(r.target_bps) ? r.target_bps.toFixed(1) : "—"} bp · cost ${num(r.cost_bps) ? r.cost_bps.toFixed(1) : "—"} bp</span><span class="lat">${ago}</span></div>`;
+      } else {
+        h += `<div class="ar"><span class="who">RISK</span><span class="chip block">BLOCK${book}</span><span class="why" title="${esc(r.reason)}">${esc(r.reason)}</span><span class="lat">${ago}</span></div>`;
+      }
+    } else {
+      h += `<div class="ar"><span class="who">RISK</span><span class="chip aside">IDLE</span><span class="why">No entry attempt seen yet</span><span></span></div>`;
+    }
+    return h;
+  }
+
+  function posHTML(pos, bpos, S) {
+    const maxHold = S.config.risk.max_hold_s;
+    let h = "";
+    if (pos) {
+      const isLong = pos.side > 0;
+      const slB = Math.abs(pos.stop / pos.entry - 1) * 1e4, tpB = Math.abs(pos.target / pos.entry - 1) * 1e4;
+      const frac = (px) => isLong ? (px - pos.stop) / (pos.target - pos.stop) : (pos.stop - px) / (pos.stop - pos.target);
+      const e = clamp(frac(pos.entry), 0, 1) * 100, c = clamp(frac(pos.price), 0, 1) * 100;
+      h += `<div class="pl"><span class="who jev">JEV</span><span class="chip ${isLong ? "long" : "short"}">${isLong ? "LONG" : "SHORT"}</span>` +
+        `<span>${fmtUsd(pos.notional, 0)}</span><span class="${cls(pos.upnl_bps)}">${fmtSigned(pos.upnl_bps, 1)} bp</span>` +
+        `<span class="${cls(pos.upnl)}">${fmtUsdSigned(pos.upnl)}</span><span class="mut held" title="time since Jev's signal (the 15-min exit clock)">${fmtDur(pos.age_s ?? pos.hold_s)} / ${fmtDur(maxHold)}</span></div>`;
+      h += `<div class="sltp" title="Where the price sits between the stop and the target"><span class="dn">SL ${slB.toFixed(1)}</span><span class="track" style="--e:${e.toFixed(1)}%;--c:${c.toFixed(1)}%"><span class="en"></span><span class="cur"></span></span><span class="up">TP ${tpB.toFixed(1)}</span></div>`;
+    } else {
+      h += `<div class="pl"><span class="who jev">JEV</span><span class="mut">Flat. No open position.</span></div>`;
+      h += `<div class="sltp"><span class="mut">SL</span><span class="track off"></span><span class="mut">TP</span></div>`;
+    }
+    if (bpos) {
+      const isLong = bpos.side > 0;
+      h += `<div class="pl sm"><span class="who">BASE</span><span class="chip ${isLong ? "long" : "short"}">${isLong ? "LONG" : "SHORT"}</span><span>${fmtUsd(bpos.notional, 0)}</span><span class="${cls(bpos.upnl_bps)}">${fmtSigned(bpos.upnl_bps, 1)} bp</span><span class="mut held">${fmtDur(bpos.hold_s)}</span></div>`;
+    } else {
+      h += `<div class="pl sm"><span class="who">BASE</span><span class="mut">Flat</span></div>`;
+    }
+    return h;
+  }
+
+  // ------------------------------------------------------------------ decision stream
+  function setupCanvas(cv, W, H) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.round(W * dpr), h = Math.round(H * dpr);
+    if (cv.width !== w) cv.width = w;
+    if (cv.height !== h) cv.height = h;
+    cv.style.height = H + "px";
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    return ctx;
+  }
+  function renderStream(S) {
+    const cv = $("#streamCv"), W = cv.parentElement.clientWidth;
+    if (!W) return;
+    const coins = S.config.coins, span = 300, narrow = W < 640;
+    const labW = narrow ? 42 : 60, rowH = narrow ? 13 : 16, bH = narrow ? 4 : 5, g = 2, blockH = rowH + g + bH + 10, axH = 16;
+    const H = coins.length * blockH + axH;
+    const ctx = setupCanvas(cv, W, H);
+    const x0 = labW, x1 = W - 1, cw = (x1 - x0) / span;
+    ui.stream = { x0, x1, cw, blockH, rowH, coins, idx: {}, span };
+    const cj = new Array(9).fill(0), cb = new Array(9).fill(0);
+    ctx.textBaseline = "middle";
+    coins.forEach((c, i) => {
+      const y = i * blockH + 2, rb = (S.markets[c] || {}).ribbon || [];
+      ctx.fillStyle = C.text; ctx.font = `700 ${narrow ? 11 : 12}px ${FONT_COND}`; ctx.textAlign = "left";
+      ctx.fillText(c, 0, y + rowH / 2 + 1);
+      if (!narrow) { ctx.fillStyle = C["text-3"]; ctx.font = `600 8.5px ${FONT_COND}`; ctx.fillText("BASE", 0, y + rowH + g + bH / 2 + 1); }
+      ctx.fillStyle = C.idle;
+      ctx.fillRect(x0, y, x1 - x0, rowH);
+      ctx.fillRect(x0, y + rowH + g, x1 - x0, bH);
+      const idx = {};
+      const w = Math.max(1, cw - (cw >= 3 ? 1 : 0));
+      for (const r of rb) {
+        const ago = r[0];
+        if (ago < 0 || ago >= span) continue;
+        const x = x1 - (ago + 1) * cw, a = r[3] | 0, b = r[4] | 0;
+        cj[a]++; cb[b]++;
+        if (a) { ctx.fillStyle = CODES[a].color; ctx.fillRect(x, y, w, rowH); }
+        if (b) { ctx.globalAlpha = 0.8; ctx.fillStyle = CODES[b].color; ctx.fillRect(x, y + rowH + g, w, bH); ctx.globalAlpha = 1; }
+        idx[Math.floor(ago)] = r;
+      }
+      ui.stream.idx[c] = idx;
+    });
+    const ay = coins.length * blockH + 7;
+    ctx.font = `500 9.5px ${FONT_MONO}`; ctx.fillStyle = C["text-3"];
+    for (const s of (narrow ? [300, 180, 60, 0] : [300, 240, 180, 120, 60, 0])) {
+      const x = x1 - s * cw;
+      ctx.textAlign = s === 300 ? "left" : s === 0 ? "right" : "center";
+      ctx.fillText(s ? `${MINUS}${s / 60}m` : "now", x, ay);
+    }
+    ctx.textAlign = "left";
+    const total = cj.reduce((a, b) => a + b, 0);
+    $("#streamMeta").textContent = `${fmtInt(total)} decisions in 5 min · ${fmtInt(S.engine.decisions_per_min)}/min · top row Jev, thin row baseline`;
+    $("#streamLegend").innerHTML = LEGEND_ORDER.map(k => `<span class="lg" title="Jev ${cj[k]} · baseline ${cb[k]}"><i style="background:${CODES[k].color};${k === 0 ? `outline:1px solid ${C["line-2"]}` : ""}"></i><span>${CODES[k].label}</span>${fmtInt(cj[k])}<em>/ ${fmtInt(cb[k])}</em></span>`).join("");
+  }
+  function streamTip(ev) {
+    const st = ui.stream, tip = $("#tip");
+    if (!st || !S) { tip.hidden = true; return; }
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    const i = Math.floor((y - 2) / st.blockH);
+    if (x < st.x0 || x > st.x1 || i < 0 || i >= st.coins.length) { tip.hidden = true; return; }
+    const ago = Math.floor((st.x1 - x) / st.cw);
+    const coin = st.coins[i], r = st.idx[coin] && st.idx[coin][ago];
+    if (!r) { tip.hidden = true; return; }
+    tip.innerHTML = `<b>${esc(coin)} · ${fmtDur(r[0])} ago</b><br>Jev: ${CODES[r[3]].label}${r[1] != null ? ` · P(up) ${pct(r[1])} / P(down) ${pct(r[2])}` : ""}<br>Baseline: ${CODES[r[4]].label}`;
+    tip.hidden = false;
+    const tw = tip.offsetWidth;
+    tip.style.left = clamp(ev.clientX + 14, 8, window.innerWidth - tw - 8) + "px";
+    tip.style.top = (ev.clientY + 16) + "px";
+  }
+
+  // ------------------------------------------------------------------ equity
+  function equitySVG(S, W) {
+    const H = 236, x0 = 2, x1 = W - 84, top = 10, ph = H - top - 26;
+    const J = (S.books.jev.equity_curve || []).concat([[S.ts, S.books.jev.equity]]);
+    const B = (S.books.baseline.equity_curve || []).concat([[S.ts, S.books.baseline.equity]]);
+    const start = S.config.starting_cash;
+    if (J.length < 3) return empty(H - 20, "Equity is sampled every 5 seconds. The curve appears after the first samples.");
+    const ta = Math.min(J[0][0], B.length ? B[0][0] : J[0][0]), tb = S.ts;
+    let lo = start, hi = start;
+    for (const p of J.concat(B)) { if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; }
+    const minSpan = start * 0.002;
+    if (hi - lo < minSpan) { const c = (hi + lo) / 2; lo = c - minSpan / 2; hi = c + minSpan / 2; }
+    const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+    const xs = (t) => x0 + (t - ta) / Math.max(1, tb - ta) * (x1 - x0);
+    const ys = (v) => top + ph - (v - lo) / (hi - lo) * ph;
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Equity of the Jev book and the baseline book">`;
+    s += `<defs><linearGradient id="eqg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.jev}" stop-opacity=".22"/><stop offset="1" stop-color="${C.jev}" stop-opacity="0"/></linearGradient></defs>`;
+    const ej = S.books.jev.equity, eb = S.books.baseline.equity;
+    let yj = ys(ej), yb = ys(eb);
+    if (Math.abs(yj - yb) < 18) { const mid = (yj + yb) / 2; if (yj <= yb) { yj = mid - 9; yb = mid + 9; } else { yj = mid + 9; yb = mid - 9; } }
+    const tk = niceTicks(lo, hi, 4), dec = Math.min(2, stepDec(tk.step));
+    for (const t of tk) {
+      const y = ys(t);
+      if (y < top - 0.5 || y > top + ph + 0.5) continue;
+      s += `<line x1="${x0}" x2="${x1}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${C.line}"/>`;
+      if (Math.abs(y - yj) > 16 && Math.abs(y - yb) > 16) s += `<text x="${x1 + 8}" y="${(y + 3.5).toFixed(1)}" class="ax">${fmtUsd(t, dec)}</text>`;
+    }
+    const ystart = ys(start);
+    s += `<line x1="${x0}" x2="${x1}" y1="${ystart.toFixed(1)}" y2="${ystart.toFixed(1)}" stroke="${C["text-3"]}" stroke-dasharray="4 4"/>`;
+    s += `<text x="${x0 + 4}" y="${(ystart - 5).toFixed(1)}" class="axc halo">START ${fmtUsd(start, 0)}</text>`;
+    const spanMin = (tb - ta) / 60;
+    const useH = spanMin > 180, unit = useH ? 60 : 1;
+    const xt = niceTicks(0, spanMin / unit, 5);
+    for (const m of xt) {
+      if (m <= 0) continue;
+      const x = xs(tb - m * unit * 60);
+      if (x < x0 + 24) continue;
+      s += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${top}" y2="${top + ph}" stroke="${C.line}" stroke-dasharray="2 3"/><text x="${x.toFixed(1)}" y="${H - 8}" text-anchor="middle" class="ax">${MINUS}${m}${useH ? "h" : "m"}</text>`;
+    }
+    s += `<text x="${x1}" y="${H - 8}" text-anchor="end" class="ax">now</text>`;
+    const path = (pts) => pts.map((p, i) => (i ? "L" : "M") + xs(p[0]).toFixed(1) + " " + ys(p[1]).toFixed(1)).join("");
+    if (B.length > 1) s += `<path d="${path(B)}" fill="none" stroke="${C.base}" stroke-width="1.4" stroke-dasharray="1 0"/>`;
+    const dj = path(J);
+    s += `<path d="${dj}L${xs(J[J.length - 1][0]).toFixed(1)} ${top + ph}L${xs(J[0][0]).toFixed(1)} ${top + ph}Z" fill="url(#eqg)"/>`;
+    s += `<path d="${dj}" fill="none" stroke="${C.jev}" stroke-width="2" stroke-linejoin="round"/>`;
+    s += `<circle cx="${xs(J[J.length - 1][0]).toFixed(1)}" cy="${ys(J[J.length - 1][1]).toFixed(1)}" r="3" fill="${C.jev}"/>`;
+    s += `<rect x="${x1 + 3}" y="${(yj - 8.5).toFixed(1)}" width="${W - x1 - 4}" height="17" rx="1.5" fill="${C.jev}"/><text x="${x1 + 8}" y="${(yj + 3.8).toFixed(1)}" class="ax tagt">${fmtUsd(ej, 0)}</text>`;
+    s += `<rect x="${x1 + 3}" y="${(yb - 8.5).toFixed(1)}" width="${W - x1 - 4}" height="17" rx="1.5" fill="${C.base}"/><text x="${x1 + 8}" y="${(yb + 3.8).toFixed(1)}" class="ax tagt">${fmtUsd(eb, 0)}</text>`;
+    return s + "</svg>";
+  }
+  function renderEquity(S) {
+    const el = $("#eqChart"), W = el.clientWidth;
+    if (W) el.innerHTML = equitySVG(S, W);
+    const J = S.books.jev, B = S.books.baseline;
+    $("#eqMeta").textContent = `Jev ${fmtSigned(J.pnl_pct, 2)}% · base ${fmtSigned(B.pnl_pct, 2)}% · run ${fmtDur(S.ts - S.engine.started)}`;
+    const bp = (x) => num(x) ? fmtSigned(x, 1) + "bp" : "—";
+    const better = (a, b, hi) => !num(a) || !num(b) || a === b ? [false, false] : hi ? [a > b, b > a] : [a < b, b < a];
+    const row = (label, ja, ba, jt, bt, hi) => {
+      const [bj, bb] = hi == null ? [false, false] : better(ja, ba, hi);
+      return `<div class="sc"><span>${label}</span><span class="${bj ? "best" : ""}">${jt}</span><span class="${bb ? "best" : ""}">${bt}</span></div>`;
+    };
+    $("#eqCard").innerHTML =
+      `<div class="sc hd"><span></span><span class="jv">JEV</span><span>BASE</span></div>` +
+      row("Net P&amp;L", J.pnl, B.pnl, `<span class="${cls(J.pnl)}">${fmtUsdSigned(J.pnl)}</span>`, `<span class="${cls(B.pnl)}">${fmtUsdSigned(B.pnl)}</span>`, true) +
+      row("Closed trades", J.trades, B.trades, fmtInt(J.trades), fmtInt(B.trades), null) +
+      row("Win rate", J.win_rate, B.win_rate, num(J.win_rate) ? J.win_rate.toFixed(1) + "%" : "—", num(B.win_rate) ? B.win_rate.toFixed(1) + "%" : "—", true) +
+      row("Avg / trade", J.avg_pnl_bps, B.avg_pnl_bps, bp(J.avg_pnl_bps), bp(B.avg_pnl_bps), true) +
+      row("Profit factor", J.profit_factor, B.profit_factor, num(J.profit_factor) ? J.profit_factor.toFixed(2) : "—", num(B.profit_factor) ? B.profit_factor.toFixed(2) : "—", true) +
+      row("Gross", J.gross, B.gross, fmtUsdSigned(J.gross), fmtUsdSigned(B.gross), true) +
+      row("Fees paid", J.fees, B.fees, fmtUsd(J.fees), fmtUsd(B.fees), false) +
+      row("Funding paid", J.funding, B.funding, fmtUsd(J.funding), fmtUsd(B.funding), false) +
+      row("Avg hold", J.avg_hold_s, B.avg_hold_s, fmtDur(J.avg_hold_s), fmtDur(B.avg_hold_s), null) +
+      row("Max drawdown", J.max_drawdown_pct, B.max_drawdown_pct, num(J.max_drawdown_pct) ? J.max_drawdown_pct.toFixed(2) + "%" : "—", num(B.max_drawdown_pct) ? B.max_drawdown_pct.toFixed(2) + "%" : "—", false);
+  }
+
+  // ------------------------------------------------------------------ funnel
+  function renderFunnel(S) {
+    const J = S.books.jev.funnel, B = S.books.baseline.funnel;
+    const max = Math.max(J.decisions, B.decisions, 1);
+    const w = (n) => n > 0 ? Math.max(1.2, Math.log10(n + 1) / Math.log10(max + 1) * 100) : 0;
+    const stages = [["decisions", "Decisions", "every market, every second"], ["signals", "Entry signals", "policy wanted in"],
+      ["risk_pass", "Passed risk", "all hard limits OK"], ["fills", "Filled", "executed on the book"]];
+    let h = `<div class="fun">`;
+    stages.forEach(([k, lab, sub], i) => {
+      const prev = i ? stages[i - 1][0] : null;
+      const conv = (book) => prev && book[prev] ? ` · ${(100 * book[k] / book[prev]).toFixed(book[k] / book[prev] < 0.1 ? 1 : 0)}%` : "";
+      h += `<div class="fs"><div class="fl"><span>${lab}</span><em>${sub}</em></div>` +
+        `<div class="fb"><span class="tr"><i style="width:${w(J[k]).toFixed(1)}%;background:${C.jev}"></i></span><span>${fmtInt(J[k])}<em>${conv(J)}</em></span></div>` +
+        `<div class="fb"><span class="tr"><i style="width:${w(B[k]).toFixed(1)}%;background:${C.base}"></i></span><span>${fmtInt(B[k])}<em>${conv(B)}</em></span></div></div>`;
+    });
+    h += `</div><div class="keyrow"><span><i style="background:${C.jev}"></i>Jev book</span><span><i style="background:${C.base}"></i>Baseline</span><span>exits: Jev ${fmtInt(J.exits)} · base ${fmtInt(B.exits)}</span></div>`;
+    $("#funnel").innerHTML = h;
+  }
+
+  // ------------------------------------------------------------------ latency
+  function renderLatency(S) {
+    const j = S.jev, el = $("#latChart"), W = el.clientWidth;
+    $("#latMeta").textContent = j.provider ? `${fmtInt(j.calls)} calls · ${fmtInt(S.engine.jev_calls_per_min)}/min` : "no key";
+    if (!W) return;
+    const bins = j.hist || [];
+    const n = bins.reduce((a, b) => a + b[2], 0);
+    if (!j.provider || !n) {
+      el.innerHTML = empty(150, j.provider ? "Waiting for the first Jev answers." : "No TypeSafe key yet. Latency appears once Jev answers.");
+    } else {
+      const H = 178, x0 = 2, x1 = W - 2, top = 32, ph = H - top - 22;
+      const bw = (x1 - x0) / bins.length;
+      const mx = Math.max(1, ...bins.map(b => b[2]));
+      const xAt = (ms) => {
+        for (let i = 0; i < bins.length; i++) {
+          const [lo, hi] = bins[i];
+          if (hi == null || ms < hi) return x0 + (i + (hi == null ? 0.5 : clamp((ms - lo) / (hi - lo), 0, 1))) * bw;
+        }
+        return x1;
+      };
+      let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Histogram of Jev answer times">`;
+      bins.forEach(([lo, hi, c], i) => {
+        const h = c / mx * ph, x = x0 + i * bw;
+        const late = lo >= j.deadline_ms;
+        s += `<rect x="${(x + 1.5).toFixed(1)}" y="${(top + ph - h).toFixed(1)}" width="${(bw - 3).toFixed(1)}" height="${h.toFixed(1)}" fill="${late ? C.late : C.jev}" fill-opacity="${late ? 0.85 : 0.8}"><title>${lo}${hi ? "–" + hi : "+"} ms: ${c} answers</title></rect>`;
+        if (c) s += `<text x="${(x + bw / 2).toFixed(1)}" y="${(top + ph - h - 4).toFixed(1)}" text-anchor="middle" class="ax">${c}</text>`;
+        if (i % 2 === 0 || bw > 40) s += `<text x="${x.toFixed(1)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : "middle"}" class="ax">${lo}${hi == null ? "+" : ""}</text>`;
+      });
+      s += `<line x1="${x0}" x2="${x1}" y1="${top + ph}" y2="${top + ph}" stroke="${C["line-2"]}"/>`;
+      const xd = xAt(j.deadline_ms);
+      s += `<line x1="${xd.toFixed(1)}" x2="${xd.toFixed(1)}" y1="15" y2="${top + ph}" stroke="${C.down}" stroke-width="1.5" stroke-dasharray="3 2"/>`;
+      const dRight = xd + 120 < x1;
+      s += `<text x="${(dRight ? xd + 5 : xd - 5).toFixed(1)}" y="11" text-anchor="${dRight ? "start" : "end"}" class="axc" style="fill:${C.down}">DEADLINE ${j.deadline_ms} MS</text>`;
+      let lastX = -99;
+      for (const [k, v] of [["P50", j.p50_ms], ["P95", j.p95_ms]]) {
+        if (!num(v)) continue;
+        const x = xAt(v);
+        s += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="15" y2="${top + ph}" stroke="${C.amber}" stroke-width="1" stroke-dasharray="2 2"/>`;
+        if (x - lastX > 30) s += `<text x="${(x + 4).toFixed(1)}" y="11" class="axc" style="fill:${C.amber}">${k}</text>`;
+        lastX = x;
+      }
+      el.innerHTML = s + "</svg>";
+    }
+    $("#latStats").innerHTML = `<div class="statline"><span><b>p50</b>${num(j.p50_ms) ? Math.round(j.p50_ms) + " ms" : "—"}</span><span><b>p95</b>${num(j.p95_ms) ? Math.round(j.p95_ms) + " ms" : "—"}</span><span><b>ok</b>${fmtInt(j.ok)}</span><span><b>late</b><span class="${j.late ? "wrn" : ""}">${fmtInt(j.late)}</span></span><span><b>errors</b><span class="${j.errors ? "dn" : ""}">${fmtInt(j.errors)}</span></span><span><b>model</b>${esc(j.model_seen || j.model_pinned)}</span></div>` +
+      `<p class="note">An answer slower than the deadline is ignored and the market holds for that second.</p>`;
+  }
+
+  // ------------------------------------------------------------------ calibration
+  function renderCalib(S) {
+    const c = S.calibration || {}, el = $("#calChart"), W = el.clientWidth;
+    $("#calMeta").textContent = `${S.config.horizon_s}s horizon · ${fmtInt(c.n || 0)} resolved`;
+    if (!W) return;
+    const bins = (c.bins || []).filter(b => b.n > 0);
+    if (!bins.length) {
+      el.innerHTML = empty(170, `Each direction call is scored ${S.config.horizon_s} seconds later. The chart fills in after the first minute of answers.`);
+    } else {
+      const H = 190, x0 = 34, x1 = W - 8, top = 8, ph = H - top - 30;
+      const X0 = 0.3, X1 = 1.0;
+      const xs = (p) => x0 + (p - X0) / (X1 - X0) * (x1 - x0), ys = (p) => top + ph - p * ph;
+      const mx = Math.max(...bins.map(b => b.n));
+      let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Calibration: stated probability against hit rate">`;
+      for (const t of [0, 0.25, 0.5, 0.75, 1]) s += `<line x1="${x0}" x2="${x1}" y1="${ys(t).toFixed(1)}" y2="${ys(t).toFixed(1)}" stroke="${C.line}"/><text x="${x0 - 6}" y="${(ys(t) + 3.5).toFixed(1)}" text-anchor="end" class="ax">${t * 100}%</text>`;
+      for (const t of [0.4, 0.6, 0.8, 1.0]) s += `<text x="${xs(t).toFixed(1)}" y="${top + ph + 14}" text-anchor="${t === 1 ? "end" : "middle"}" class="ax">${Math.round(t * 100)}%</text>`;
+      s += `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" class="axc">JEV'S STATED PROBABILITY → HOW OFTEN IT WAS RIGHT</text>`;
+      s += `<line x1="${xs(1 / 3).toFixed(1)}" x2="${x1}" y1="${ys(1 / 3).toFixed(1)}" y2="${ys(1 / 3).toFixed(1)}" stroke="${C["text-3"]}" stroke-dasharray="1 3"/>`;
+      for (const b of bins) {
+        const xa = xs(Math.max(X0, b.lo)) + 2, xb = xs(Math.min(1, b.hi)) - 2;
+        const op = (0.25 + 0.6 * b.n / mx).toFixed(2);
+        s += `<rect x="${xa.toFixed(1)}" y="${ys(b.hit_rate).toFixed(1)}" width="${Math.max(1, xb - xa).toFixed(1)}" height="${(ph - (ys(b.hit_rate) - top)).toFixed(1)}" fill="${C.jev}" fill-opacity="${op}"><title>Stated ${pct(b.lo)}–${pct(Math.min(1, b.hi))}: right ${pct(b.hit_rate)} of ${b.n} calls (avg stated ${pct(b.avg_pred)})</title></rect>`;
+      }
+      s += `<line x1="${xs(X0).toFixed(1)}" y1="${ys(X0).toFixed(1)}" x2="${xs(1).toFixed(1)}" y2="${ys(1).toFixed(1)}" stroke="${C.amber}" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+      for (const b of bins) s += `<circle cx="${xs(b.avg_pred).toFixed(1)}" cy="${ys(b.hit_rate).toFixed(1)}" r="3.6" fill="${C.text}" stroke="${C.bg}" stroke-width="1.5"/>`;
+      el.innerHTML = s + "</svg>";
+    }
+    const br = c.base_rates || {};
+    const rate = (k, lab, col, lt) => num(br[k]) ? `<i class="${lt ? "lt" : ""}" style="width:${(br[k] * 100).toFixed(1)}%;background:${col}">${br[k] >= 0.12 ? `${lab} ${pct(br[k])}` : ""}</i>` : "";
+    $("#calStats").innerHTML = `<div class="statline"><span><b>accuracy</b>${num(c.accuracy) ? pct(c.accuracy) : "—"}</span><span><b>brier</b>${num(c.brier) ? c.brier.toFixed(3) : "—"} <span class="mut">(0.667 = no skill)</span></span><span><b>pending</b>${fmtInt(c.pending || 0)}</span></div>` +
+      (num(br.up) ? `<div class="rates" title="What actually happened over the horizon">${rate("down", "DOWN", C.down)}${rate("neutral", "FLAT", C["line-2"], true)}${rate("up", "UP", C.up)}</div>` : "") +
+      `<p class="note">Amber dashes = perfect calibration, dotted line = chance (33%). Bars below the dashes mean Jev is overconfident.</p>`;
+  }
+
+  // ------------------------------------------------------------------ why no trade
+  function renderBlocks(S) {
+    $$("#blkSeg button").forEach(b => b.classList.toggle("on", b.dataset.v === ui.blocksBook));
+    const list = (S.books[ui.blocksBook] || {}).blocks || [];
+    if (!list.length) { $("#blocks").innerHTML = empty(150, "Nothing blocked yet."); return; }
+    const total = list.reduce((a, b) => a + b[1], 0), mx = list[0][1];
+    $("#blocks").innerHTML = `<div class="bk">` + list.map(([reason, n]) => {
+      const isRisk = reason.startsWith("Risk:");
+      const text = reason.replace(/^(Risk|Policy):\s*/, "");
+      return `<div class="bkr"><div class="bt"><span class="kind ${isRisk ? "rsk" : "pol"}">${isRisk ? "RISK" : "POLICY"}</span><span title="${esc(text)}">${esc(text)}</span><em>${fmtInt(n)} <small>${pct(n / total)}</small></em></div>` +
+        `<div class="bb"><i style="width:${(n / mx * 100).toFixed(1)}%;background:${isRisk ? C.warn : C.jev}"></i></div></div>`;
+    }).join("") + `</div><p class="note">Policy = Jev's answers or the rules said no. Risk = the hard limits said no.</p>`;
+  }
+
+  // ------------------------------------------------------------------ how bets end
+  function renderExits(S) {
+    const jb = S.books.jev || {}, rows = jb.exits || [];
+    if (!rows.length) {
+      $("#exits").innerHTML = empty(150, jb.exits === undefined && jb.trades > 0 ? "Exit breakdown needs an engine restart."
+                                                                                : "No closed Jev trades yet.");
+      return;
+    }
+    const bp = (v) => num(v) ? `<span style="color:${v > 0 ? C.up : v < 0 ? C.down : "inherit"}">${fmtSigned(v, 1)}</span>` : "—";
+    const time = rows.filter(r => r.kind.startsWith("time_"));
+    let h = `<table class="xt"><thead><tr><th>Exit</th><th>n</th><th>won</th><th title="price move in the bet's favour, before fees">move</th>` +
+            `<th title="fees paid, entry + exit">fees</th><th>net bp</th><th>P&amp;L</th></tr></thead><tbody>`;
+    const row = (r, rc = "") => `<tr class="${rc}"><td>${esc(r.label)}</td><td>${fmtInt(r.n)}</td><td>${pct(r.wins / r.n)}</td>` +
+      `<td>${bp(r.gross_bps)}</td><td>${bp(-r.fees_bps)}</td><td>${bp(r.net_bps)}</td>` +
+      `<td class="${cls(r.pnl)}">${fmtUsdSigned(r.pnl, 0)}</td></tr>`;
+    h += rows.map(r => row(r)).join("");
+    if (time.length) {            // the two time-exit rows together: the fair read on the 15-minute timer
+      const n = time.reduce((a, r) => a + r.n, 0), w = (k) => time.reduce((a, r) => a + r[k] * r.n, 0) / n;
+      h += row({ label: "All 15-min exits", n, wins: time.reduce((a, r) => a + r.wins, 0), gross_bps: w("gross_bps"),
+                 fees_bps: w("fees_bps"), net_bps: w("net_bps"), pnl: time.reduce((a, r) => a + r.pnl, 0) }, "tot");
+    }
+    $("#exits").innerHTML = h + `</tbody></table><p class="note">"move" is how far price went the bet's way (bps, before fees). ` +
+      `The 15-min exit is where most bets end; take-profits remove the winners first and the maker exit fills the ones ` +
+      `drifting our way, so "market" exits are the leftovers that ran against Jev. If move ≈ 0, the fees are the loss.</p>`;
+  }
+
+  // ------------------------------------------------------------------ risk
+  function renderRisk(S) {
+    $$("#limSeg button").forEach(b => b.classList.toggle("on", b.dataset.v === ui.limitsBook));
+    let h = `<div class="armed">`;
+    for (const [name, b] of Object.entries(S.books)) {
+      const lab = name === "jev" ? "JEV" : "BASE";
+      const [t, c] = S.engine.status === "paused" || b.killed ? ["KILLED", "short"] : b.daily_stop ? ["DAILY STOP", "exit"] : ["ARMED", "pass"];
+      h += `<span class="chip ${c}">${lab} · ${t}</span>`;
+    }
+    h += `<span class="chip aside">${S.config.risk.max_open_positions} pos max · ${S.config.risk.max_total_leverage}x lev max</span></div>`;
+    const L = (S.limits || []).find(l => l.book === ui.limitsBook);
+    if (L) {
+      h += `<div class="lim">` + L.items.map(it => {
+        const use = clamp(it.use || 0, 0, 1), col = use >= 0.8 ? C.down : use >= 0.5 ? C.amber : C.up;
+        const fmt = (v) => it.unit === "%" ? `${fmtSigned(v, 2)}%` : it.unit === "x" ? `${num(v) ? v.toFixed(2) : "—"}x` : fmtInt(v);
+        const lim = it.unit === "%" ? `${num(it.limit) ? it.limit.toFixed(1) : "—"}%` : it.unit === "x" ? `${it.limit}x` : it.limit;
+        return `<div class="li"><span class="n">${esc(it.name)}</span><span class="b"><i style="width:${(Math.max(use, 0.01) * 100).toFixed(1)}%;background:${col}"></i></span><span class="v">${fmt(it.value)} <small>/ ${lim}</small></span></div>`;
+      }).join("") + `</div>`;
+    }
+    const r = S.last_risk;
+    if (r) {
+      const side = r.side > 0 ? "LONG" : "SHORT";
+      h += `<div class="verdict"><div class="vh"><span class="chip ${r.approved ? "pass" : "block"}">${r.approved ? "PASSED" : "BLOCKED"}</span><span>${esc(r.coin)} ${side} · ${r.book === "jev" ? "Jev" : "baseline"} · ${fmtDur(S.ts - r.ts)} ago</span></div>`;
+      h += `<div class="vr">${r.approved ? `Size ${fmtUsd(r.notional, 0)} · stop ${num(r.stop_bps) ? r.stop_bps.toFixed(1) : "—"} bp · target ${num(r.target_bps) ? r.target_bps.toFixed(1) : "—"} bp · round trip ${num(r.cost_bps) ? r.cost_bps.toFixed(1) : "—"} bp · slippage ${num(r.slip_bps) ? r.slip_bps.toFixed(2) : "—"} bp` : esc(r.reason)}</div>`;
+      const be = breakeven(r);
+      if (be != null) h += `<div class="vr">After fees this trade needs a <b class="${be > 0.6 ? "wrn" : ""}">${pct(be)}</b> win rate to break even (stop + cost) / (target + stop).</div>`;
+      h += `<div class="checks">` + (r.checks || []).map(ck => `<div class="ck ${ck.ok ? "" : "bad"}" title="${esc(ck.name)}: ${esc(ck.value)} (limit ${esc(ck.limit)})"><b>${ck.ok ? "✓" : "✗"}</b><span>${esc(ck.name)}</span><span>${esc(ck.value)}</span></div>`).join("") + `</div></div>`;
+    } else {
+      h += `<div class="verdict"><div class="vr mut">No entry has reached the risk engine yet.</div></div>`;
+    }
+    $("#risk").innerHTML = h;
+  }
+
+  function breakeven(r) {
+    if (!r || !num(r.stop_bps) || !num(r.target_bps) || !num(r.cost_bps) || r.target_bps + r.stop_bps <= 0) return null;
+    return clamp((r.stop_bps + r.cost_bps) / (r.target_bps + r.stop_bps), 0, 1);
+  }
+
+  // ------------------------------------------------------------------ blotter
+  function renderBlotter(S) {
+    const el = $("#blotter"), keep = el.querySelector(".tablewrap.closed");
+    const scroll = keep ? keep.scrollTop : 0;
+    const bookChip = (b) => `<span class="chip ${b === "jev" ? "jevb" : "baseb"}">${b === "jev" ? "JEV" : "BASE"}</span>`;
+    const sideChip = (s) => `<span class="chip ${s > 0 ? "long" : "short"}">${s > 0 ? "LONG" : "SHORT"}</span>`;
+    const open = [];
+    for (const [name, b] of Object.entries(S.books)) for (const p of b.positions) open.push({ book: name, ...p });
+    const closed = S.trades || [];
+    $("#bltMeta").textContent = `${open.length} open · ${closed.length} latest closed`;
+    let h = `<div><div class="sect"><span>Open positions</span><span>marked to the live mid</span></div>`;
+    h += open.length ? `<div class="tablewrap open"><table><thead><tr><th class="l">Book</th><th class="l">Market</th><th class="l">Side</th><th>Notional</th><th>Entry</th><th>Mark</th><th>uPnL</th><th>bp</th><th>Stop</th><th>Target</th><th>Funding</th><th>Held</th></tr></thead><tbody>` +
+      open.map(p => `<tr><td class="l">${bookChip(p.book)}</td><td class="l">${esc(p.coin)}</td><td class="l">${sideChip(p.side)}</td><td>${fmtUsd(p.notional, 0)}</td><td>${fmtPx(p.entry)}</td><td>${fmtPx(p.price)}</td><td class="${cls(p.upnl)}">${fmtUsdSigned(p.upnl)}</td><td class="${cls(p.upnl_bps)}">${fmtSigned(p.upnl_bps, 1)}</td><td>${fmtPx(p.stop)}</td><td>${fmtPx(p.target)}</td><td>${fmtUsd(p.funding)}</td><td>${fmtDur(p.hold_s)}</td></tr>`).join("") + `</tbody></table></div>`
+      : empty(64, "Both books are flat.");
+    h += `</div><div><div class="sect"><span>Closed trades</span><span>fees, funding and slippage included</span></div>`;
+    h += closed.length ? `<div class="tablewrap closed"><table><thead><tr><th class="l">Closed</th><th class="l">Book</th><th class="l">Market</th><th class="l">Side</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>bp</th><th>Fees</th><th>Slip</th><th>Held</th><th class="l">Exit reason</th></tr></thead><tbody>` +
+      closed.map(t => `<tr><td class="l mut">${utc(t.closed)}</td><td class="l">${bookChip(t.book)}</td><td class="l">${esc(t.coin)}</td><td class="l">${sideChip(t.side)}</td><td>${fmtPx(t.entry)}</td><td>${fmtPx(t.exit)}${t.maker_exit ? ' <small title="Filled as a maker order">M</small>' : ""}</td><td class="${cls(t.pnl)}">${fmtUsdSigned(t.pnl)}</td><td class="${cls(t.pnl_bps)}">${fmtSigned(t.pnl_bps, 1)}</td><td>${fmtUsd(t.fees)}</td><td>${num(t.slip_bps) ? t.slip_bps.toFixed(2) : "—"}</td><td>${fmtDur(t.hold_s)}</td><td class="why2" title="Entry: ${esc(t.entry_reason)}. Exit: ${esc(t.reason)}">${esc(t.reason)}</td></tr>`).join("") + `</tbody></table></div>`
+      : empty(64, "No closed trades yet.");
+    el.innerHTML = h + `</div>`;
+    const tw = el.querySelector(".tablewrap.closed");
+    if (tw) tw.scrollTop = scroll;
+  }
+
+  // ------------------------------------------------------------------ tape
+  function segCoins(sel) {
+    const seg = $(sel), coins = S.config.coins;
+    if (seg.dataset.coins !== coins.join(",")) {
+      seg.dataset.coins = coins.join(",");
+      seg.innerHTML = coins.map(c => `<button type="button" data-v="${esc(c)}">${esc(c)}</button>`).join("");
+      $$("button", seg).forEach(b => b.addEventListener("click", () => selectCoin(b.dataset.v)));
+    }
+    $$("button", seg).forEach(b => b.classList.toggle("on", b.dataset.v === ui.sel));
+  }
+  function renderTape(S) {
+    segCoins("#tapeSeg");
+    const m = S.markets[ui.sel] || {}, tape = (m.tape || []).slice().reverse();
+    const el = $("#tape");
+    if (!tape.length) { el.innerHTML = empty(150, "No trades yet."); return; }
+    const notional = tape.map(t => t[1] * t[2]);
+    const sorted = notional.slice().sort((a, b) => a - b);
+    const big = sorted[Math.floor(sorted.length * 0.9)] || Infinity, mx = sorted[sorted.length - 1] || 1;
+    let buy = 0, sell = 0;
+    tape.forEach((t, i) => { if (t[3] === "b") buy += notional[i]; else sell += notional[i]; });
+    const tot = buy + sell || 1;
+    const f = m.features || {};
+    let h = `<div class="tapehd"><div class="statline" style="margin-top:0"><span><b>buyers</b><span class="up">${pct(buy / tot)}</span></span><span><b>sellers</b><span class="dn">${pct(sell / tot)}</span></span><span><b>15s flow</b>${pct(f.flow_15s)} buy</span><span><b>rate</b>${num(f.trade_rate_15s) ? f.trade_rate_15s.toFixed(1) : "—"}/s</span></div>` +
+      `<div class="tapebar"><i style="width:${(buy / tot * 100).toFixed(1)}%;background:${C.up}"></i><i style="width:${(sell / tot * 100).toFixed(1)}%;background:${C.down}"></i></div></div><div class="tape">`;
+    h += tape.map((t, i) => {
+      const isBuy = t[3] === "b", n = notional[i];
+      return `<div class="tr2${n >= big ? " big" : ""}"><i class="fill" style="width:${(n / mx * 100).toFixed(1)}%;background:${isBuy ? C.up : C.down}"></i><span>${fmtDur(t[0])}</span><span class="${isBuy ? "up" : "dn"}">${fmtPx(t[1])}</span><span>${t[2] < 1 ? t[2].toFixed(4) : t[2] < 100 ? t[2].toFixed(2) : fmtInt(t[2])}</span><span>${fmtCompact(n)}</span><span class="${isBuy ? "up" : "dn"}">${isBuy ? "B" : "S"}</span></div>`;
+    }).join("") + `</div>`;
+    el.innerHTML = h;
+  }
+
+  // ------------------------------------------------------------------ events
+  function renderLog(S) {
+    const ev = S.events || [], el = $("#log"), st = el.scrollTop;
+    $("#logMeta").textContent = `${ev.length} latest`;
+    el.innerHTML = ev.length ? ev.map(e => `<div class="ev"><time>${utc(e.ts)}</time><span class="lv ${esc(e.level)}">${esc(e.level)}</span><p>${esc(e.text)}</p></div>`).join("") : empty(150, "No events yet.");
+    el.scrollTop = st;
+  }
+
+  // ------------------------------------------------------------------ Opus review
+  function md(src) {
+    const lines = String(src || "").split(/\r?\n/);
+    let html = "", list = null;
+    const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+    const close = () => { if (list) { html += `</${list}>`; list = null; } };
+    for (const raw of lines) {
+      const l = raw.replace(/\s+$/, "");
+      let m;
+      if (!l.trim()) { close(); continue; }
+      if ((m = l.match(/^(#{1,4})\s+(.*)$/))) { close(); const lv = Math.min(6, m[1].length + 2); html += `<h${lv}>${inline(m[2])}</h${lv}>`; continue; }
+      if ((m = l.match(/^\s*[-*•]\s+(.*)$/))) { if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += `<li>${inline(m[1])}</li>`; continue; }
+      if ((m = l.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += `<li>${inline(m[1])}</li>`; continue; }
+      close();
+      html += `<p>${inline(l)}</p>`;
+    }
+    close();
+    return html;
+  }
+  function renderOpus(S) {
+    const a = S.analyst || {}, el = $("#opus");
+    const st = a.status || "unavailable";
+    $("#opusMeta").textContent = a.model ? `${a.model}${a.ts ? " · " + utc(a.ts) : ""}` : "";
+    const key = `${st}|${a.ts}|${a.error}|${PREVIEW}`;
+    if (el.dataset.key === key) return;
+    el.dataset.key = key;
+    const disabled = PREVIEW || st === "unavailable" || st === "running";
+    const label = st === "running" ? "Reviewing…" : st === "done" ? "Run a new review" : "Run Opus review";
+    const why = PREVIEW ? "Controls are disabled in the preview." : st === "unavailable" ? "Add ANTHROPIC_API_KEY to .env to turn on reviews." :
+      st === "running" ? "Opus is reading the last results. This takes up to a minute." : st === "error" ? `The last review failed: ${a.error || "unknown error"}` :
+      "Opus reads both books, the funnel and the calibration, then suggests up to three config experiments. It never trades.";
+    let h = `<div class="opus"><div class="opushd"><button class="btn violet" type="button" id="opusBtn" ${disabled ? "disabled" : ""}>${label}</button><span class="note" style="margin:0">${esc(why)}</span></div>`;
+    h += a.report ? `<div class="report">${md(a.report)}</div>` : `<div class="empty" style="min-height:150px">The review appears here. Run it after a few hours of paper trading, when each book has at least 50 trades.</div>`;
+    el.innerHTML = h + `</div>`;
+    const btn = $("#opusBtn");
+    if (btn && !disabled) btn.onclick = () => control("/api/analyst");
+  }
+
+  // ------------------------------------------------------------------ console
+  function jsonHTML(obj) {
+    return esc(JSON.stringify(obj, null, 2)).replace(/(&quot;[^&]*?&quot;)(\s*:)?|(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)|\b(true|false|null)\b/g,
+      (m0, str, colon, n, lit) => str ? (colon ? `<span class="jk">${str}</span>${colon}` : `<span class="js">${str}</span>`) : n ? `<span class="jn">${n}</span>` : `<span class="jl">${lit}</span>`);
+  }
+  function renderConsole(S) {
+    segCoins("#conSeg");
+    const m = S.markets[ui.sel] || {}, qs = (S.jev && S.jev.questions) || {};
+    const el = $("#console");
+    const key = Object.keys(qs).join(",");
+    if (el.dataset.q !== key) {
+      el.dataset.q = key;
+      el.innerHTML = `<div class="qs" id="qList"></div><div><div class="sect"><span>State sent with every call</span><span id="stTok"></span></div><pre class="json" id="stJson"></pre></div>`;
+      $("#qList").innerHTML = `<div class="sect"><span>The six questions</span><span>same battery every second</span></div>` + Object.entries(qs).map(([id, q]) =>
+        `<div class="q"><div class="qid">${esc(id)}<em>${esc(q.type)}</em></div><div><div class="qt">${esc(q.instructions)}</div>${q.options ? `<div class="qo">${q.options.map(o => `<span>${esc(o)}</span>`).join("")}</div>` : ""}</div></div>`).join("");
+    }
+    $("#stTok").textContent = m.state_tokens ? `${esc(ui.sel)} · about ${m.state_tokens} tokens` : esc(ui.sel || "");
+    $("#stJson").innerHTML = m.state ? jsonHTML(m.state) : esc("Warming up: the state is built after 2 minutes of order-book history.");
+  }
+
+  // ------------------------------------------------------------------ status line
+  function renderStatus(S) {
+    const e = S.engine, f = S.feed || {}, j = S.jev || {};
+    const left = `<span><b>LOOP</b>${fmtInt(e.loop)}</span><span><b>TICK</b>${num(e.tick_ms) ? e.tick_ms.toFixed(1) : "—"} ms</span>` +
+      `<span class="opt"><b>EVERY</b>${fmtInt(e.interval_ms)} ms</span><span class="opt"><b>SKIPPED</b>${fmtInt(e.skipped)}</span>` +
+      `<span class="opt"><b>MODEL</b>${esc(j.model_pinned)} pinned</span><span class="opt"><b>FALLBACK</b>${esc(j.fallback)}</span>` +
+      `<span class="opt"><b>RECONNECTS</b>${fmtInt(f.reconnects || 0)}</span><span class="opt"><b>UPTIME</b>${fmtDur(S.ts - e.started)}</span>`;
+    const mode = PREVIEW ? "preview" : ui.confirmReset ? "confirm" : "idle";
+    const sb = $("#statusbar");
+    if (!sb.querySelector(".sl")) sb.innerHTML = `<span class="sl" style="display:flex;gap:16px"></span><span class="sp"></span>`;
+    sb.querySelector(".sl").innerHTML = left;
+    if (mode !== ui.resetMode) {
+      ui.resetMode = mode;
+      const sp = sb.querySelector(".sp");
+      if (mode === "preview") sp.innerHTML = `<span class="mut">PAPER · preview</span>`;
+      else if (mode === "confirm") {
+        sp.innerHTML = `<span>Reset both paper books to ${fmtUsd(S.config.starting_cash, 0)}?</span><button class="btn kill" type="button" id="resetYes">Reset</button><button class="btn" type="button" id="resetNo">Cancel</button>`;
+        $("#resetYes").onclick = () => { ui.confirmReset = false; control("/api/reset"); renderStatus(S); };
+        $("#resetNo").onclick = () => { ui.confirmReset = false; renderStatus(S); };
+      } else {
+        sp.innerHTML = `<button class="btn" type="button" id="resetBtn">Reset paper books</button>`;
+        $("#resetBtn").onclick = () => { ui.confirmReset = true; renderStatus(S); };
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ wiring
+  const segHandler = (sel, key, storeKey) => $$(sel + " button").forEach(b => b.addEventListener("click", () => {
+    ui[key] = b.dataset.v; store.set(storeKey, b.dataset.v); if (S) render(S);
+  }));
+  segHandler("#blkSeg", "blocksBook", "blocks");
+  segHandler("#limSeg", "limitsBook", "limits");
+  const cv = $("#streamCv");
+  cv.addEventListener("mousemove", streamTip);
+  cv.addEventListener("mouseleave", () => { $("#tip").hidden = true; });
+  let rz = null;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (S) render(S); }, 120); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && (ui.confirmKill || ui.confirmReset)) { ui.confirmKill = ui.confirmReset = false; if (S) { renderTop(S); renderStatus(S); } }
+  });
+
+  if (PREVIEW) {
+    ui.frame = 0;
+    render(FRAMES[0]);
+    setInterval(() => { ui.frame = (ui.frame + 1) % FRAMES.length; render(FRAMES[ui.frame]); }, 1000);
+  } else {
+    poll();
+  }
+})();
+</script>

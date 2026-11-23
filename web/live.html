@@ -1,0 +1,970 @@
+<title>HELIX Cortex</title>
+<!--
+  HELIX Cortex - live 3D signal visualizer for the HELIX paper engine.
+  Visual techniques (photons travelling along links, hub nodes with rings, radar pings, cluster wobble, neon-on-black
+  palette) are adapted from ATSMATRIX-NEXUS and atsmatrix-agent-visualizeR by anyel1to,
+  (c) 2026 ATSMATRIX Technologies / anyel1to, used under the MIT License:
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+  persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and
+  this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS
+  PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+  Unlike the originals, every visual here is driven by real data: Hyperliquid best bid/ask, Jev answers, Claude forecasts,
+  risk checks and paper trades. Nothing is simulated or hard-coded.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #030712; --panel: rgba(10,15,26,.78); --panel-solid: #0a0f1a; --hair: rgba(56,189,248,.14); --hair-2: rgba(56,189,248,.26);
+  --text: #e2e8f0; --text-2: #94a3b8; --muted: #56627a;
+  --cyan: #22d3ee; --blue: #38bdf8; --purple: #a855f7; --indigo: #6366f1; --rose: #f43f5e; --green: #34d399; --amber: #fbbf24;
+  --up: #34d399; --down: #f43f5e; --jev: #22d3ee; --claude: #a855f7;
+  --sans: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); overflow: hidden; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.up { color: var(--up); } .down { color: var(--down); } .t2 { color: var(--text-2); } .muted { color: var(--muted); }
+.app { height: 100vh; display: grid; grid-template-rows: 46px minmax(0, 1fr); }
+.main { display: grid; grid-template-columns: 220px minmax(0, 1fr) 330px; min-height: 0; }
+
+/* top bar */
+.bar { display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--hair); background: linear-gradient(90deg, rgba(34,211,238,.06), transparent 40%, rgba(168,85,247,.06)); }
+.mark { font: 700 14px var(--mono); letter-spacing: 4px; background: linear-gradient(90deg, var(--cyan), var(--purple)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mark span { letter-spacing: 2px; font-weight: 500; }
+.status { display: flex; gap: 16px; font: 500 11px var(--mono); color: var(--text-2); }
+.status i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--muted); }
+.status .ok i { background: var(--green); box-shadow: 0 0 8px var(--green); } .status .warn i { background: var(--amber); box-shadow: 0 0 8px var(--amber); } .status .bad i { background: var(--rose); box-shadow: 0 0 8px var(--rose); }
+.grow { flex: 1; }
+.tag { font: 600 10px var(--mono); letter-spacing: 1.5px; color: var(--amber); border: 1px solid rgba(251,191,36,.4); border-radius: 4px; padding: 2px 6px; }
+.clock { font: 500 11px var(--mono); color: var(--text-2); }
+.btn { font: 500 11px var(--mono); color: var(--text-2); text-decoration: none; border: 1px solid var(--hair-2); border-radius: 6px; padding: 4px 9px; background: none; cursor: pointer; }
+.btn:hover { color: var(--text); border-color: var(--cyan); box-shadow: 0 0 10px rgba(34,211,238,.25); }
+.btn.on { color: var(--text); border-color: var(--cyan); box-shadow: 0 0 10px rgba(34,211,238,.3); }
+.btn.danger:hover { color: var(--rose); border-color: rgba(244,63,94,.6); box-shadow: 0 0 10px rgba(244,63,94,.3); }
+.btn.armed { color: #fff; background: rgba(244,63,94,.25); border-color: var(--rose); animation: arm 1s ease-in-out infinite alternate; }
+@keyframes arm { to { background: rgba(244,63,94,.45); } }
+
+/* watchlist */
+.wl { border-right: 1px solid var(--hair); overflow: auto; padding: 6px 0; background: rgba(5,8,15,.6); }
+.sec { font: 600 10px var(--mono); letter-spacing: 1.8px; color: var(--muted); padding: 10px 14px 6px; text-transform: uppercase; }
+.row { padding: 9px 14px; cursor: pointer; border-left: 2px solid transparent; }
+.row:hover { background: rgba(34,211,238,.04); }
+.row.sel { background: linear-gradient(90deg, rgba(34,211,238,.10), transparent); border-left-color: var(--cyan); }
+.row .top { display: flex; justify-content: space-between; font: 600 12.5px var(--mono); }
+.row .p { font-weight: 500; }
+.row canvas { width: 100%; height: 22px; margin-top: 5px; display: block; }
+.row .calls { display: flex; gap: 5px; margin-top: 5px; font: 600 9.5px var(--mono); }
+.chip { padding: 1px 5px; border-radius: 4px; border: 1px solid var(--hair-2); color: var(--text-2); }
+.chip.j { border-color: rgba(34,211,238,.45); } .chip.c { border-color: rgba(168,85,247,.45); }
+
+/* center: 3D cortex + overlays */
+.stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.stage canvas.gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.lbl { pointer-events: auto; cursor: pointer; font: 600 11px var(--mono); color: var(--text); text-align: center; padding: 6px 9px; border-radius: 8px;
+  background: rgba(3,7,18,.55); border: 1px solid rgba(56,189,248,.22); backdrop-filter: blur(6px); white-space: nowrap; transform: translateY(-6px); transition: border-color .3s, box-shadow .3s; }
+.lbl.sel { border-color: var(--cyan); box-shadow: 0 0 14px rgba(34,211,238,.35); }
+.lbl b { font-size: 12.5px; letter-spacing: 1px; } .lbl .px { color: var(--text-2); font-weight: 500; margin-left: 6px; }
+.lbl .call { font-size: 10px; margin-top: 3px; color: var(--text-2); }
+.lbl .sb { display: grid; grid-template-columns: 10px 54px; gap: 2px 4px; align-items: center; justify-content: center; margin-top: 4px; font-size: 9px; color: var(--muted); }
+.lbl .sb i { display: block; height: 4px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; } .lbl .sb i u { display: block; height: 100%; }
+.ov { position: absolute; background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; backdrop-filter: blur(10px); }
+.pipe { left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px 8px; font: 600 10px var(--mono); letter-spacing: 1.2px; }
+.pipe span { padding: 3px 9px; border-radius: 6px; color: var(--muted); transition: color .25s, background .25s, box-shadow .25s; }
+.pipe span.lit { color: #030712; background: var(--c); box-shadow: 0 0 14px var(--c); }
+.pipe em { color: var(--muted); font-style: normal; align-self: center; }
+.legend { left: 12px; top: 12px; padding: 10px 12px; font: 500 10.5px var(--mono); color: var(--text-2); display: grid; gap: 4px; max-width: 290px; }
+.legend b { font-weight: 600; } .legend .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 8px currentColor; background: currentColor; vertical-align: 0; }
+.log { left: 12px; bottom: 12px; width: min(440px, 44%); padding: 8px 0; font: 11px/1.55 var(--mono); }
+.log h4, .mini h4 { margin: 0 12px 6px; font: 600 10px var(--mono); letter-spacing: 1.6px; color: var(--muted); display: flex; justify-content: space-between; }
+.log .r { padding: 1px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+.log .r .k { display: inline-block; width: 54px; font-weight: 700; } .log .r .tm { color: var(--muted); margin-right: 8px; }
+.mini { right: 12px; bottom: 12px; width: min(470px, 46%); height: 230px; padding: 8px 0 0; display: flex; flex-direction: column; }
+.mini .cv { position: relative; flex: 1; min-height: 0; } .mini canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.focus { right: 12px; top: 12px; padding: 6px 8px; display: flex; gap: 6px; }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-2); font: 13px var(--mono); text-align: center; padding: 30px; }
+
+/* right panel */
+.side { border-left: 1px solid var(--hair); overflow: auto; padding-bottom: 12px; background: rgba(5,8,15,.6); }
+.blk { padding: 4px 16px 14px; border-bottom: 1px solid var(--hair); }
+.blk h3 { margin: 12px 0 10px; font: 600 10px var(--mono); letter-spacing: 1.8px; color: var(--muted); text-transform: uppercase; display: flex; justify-content: space-between; }
+.blk h3 em { font-style: normal; color: var(--text-2); letter-spacing: .5px; }
+.big { font: 600 26px/1.1 var(--mono); letter-spacing: -.5px; }
+.who { display: flex; align-items: center; gap: 8px; font: 700 11px var(--mono); margin-bottom: 8px; letter-spacing: 1px; }
+.who i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.prob { display: grid; grid-template-columns: 52px 1fr 38px; align-items: center; gap: 8px; font: 500 11px var(--mono); color: var(--text-2); margin: 4px 0; }
+.prob .tr { position: relative; height: 6px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: visible; }
+.prob .tr i { display: block; height: 100%; border-radius: 3px; transition: width .4s; box-shadow: 0 0 8px var(--g, transparent); }
+.prob .tr b { position: absolute; top: -3px; bottom: -3px; width: 1px; background: #e2e8f0; }
+.prob .v { text-align: right; color: var(--text); }
+.line { font: 500 11.5px var(--mono); color: var(--text-2); margin-top: 8px; }
+.line b { color: var(--text); font-weight: 600; }
+.reason { font: 12px/1.5 var(--sans); color: var(--text-2); margin-top: 8px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font: 500 11.5px var(--mono); color: var(--text-2); }
+.kv b { color: var(--text); font-weight: 500; text-align: right; }
+.badge { font: 700 10px var(--mono); letter-spacing: 1.5px; padding: 2px 7px; border-radius: 4px; }
+.badge.long { color: var(--up); border: 1px solid rgba(52,211,153,.5); box-shadow: 0 0 8px rgba(52,211,153,.25); } .badge.short { color: var(--down); border: 1px solid rgba(244,63,94,.5); box-shadow: 0 0 8px rgba(244,63,94,.25); }
+.score { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.score > div { border: 1px solid var(--hair-2); border-radius: 10px; padding: 10px; background: rgba(255,255,255,.015); }
+.score .n { font: 600 22px/1.1 var(--mono); margin: 4px 0 2px; }
+.score .s { font: 500 10.5px var(--mono); color: var(--muted); }
+@media (max-width: 1200px) { body { overflow: auto; } .app { height: auto; } .main { grid-template-columns: 1fr; } .stage { height: 720px; } .wl { display: grid; grid-template-columns: repeat(3, 1fr); } }
+</style>
+
+<div class="app">
+  <div class="bar">
+    <div class="mark">HELIX <span>CORTEX</span></div>
+    <div class="status"><div id="sFeed"><i></i>STREAM</div><div id="sJev"><i></i>JEV</div><div id="sClaude"><i></i>CLAUDE</div></div>
+    <div class="grow"></div>
+    <span class="tag" id="modeTag">PAPER</span>
+    <button class="btn" id="bSound" type="button" title="Sound cues for trades and forecasts">♪ Sound off</button>
+    <button class="btn danger" id="bReset" type="button" hidden title="Reset both paper books to starting cash">Reset paper</button>
+    <span class="clock" id="fps">— fps</span>
+    <span class="clock" id="clock"></span>
+    <a class="btn" href="/hip4">HIP-4 ↗</a>
+    <a class="btn" href="/">Terminal ↗</a>
+  </div>
+
+  <div class="main">
+    <div class="wl"><div class="sec">Markets</div><div id="rows"></div></div>
+
+    <div class="stage" id="stage">
+      <canvas class="gl" id="gl"></canvas>
+      <div class="labels" id="labels"></div>
+      <div class="ov pipe" id="pipe"><span data-k="tick" style="--c:var(--blue)">TICK</span><em>›</em><span data-k="jev" style="--c:var(--cyan)">JEV</span><em>›</em><span data-k="claude" style="--c:var(--purple)">CLAUDE</span><em>›</em><span data-k="risk" style="--c:var(--amber)">RISK</span><em>›</em><span data-k="exec" style="--c:var(--green)">EXEC</span></div>
+      <div class="ov legend">
+        <div><span class="d" style="color:var(--green)"></span><b>Neurons</b> lean up · <span style="color:var(--rose)">down</span> · <span style="color:var(--indigo)">neutral</span> (Jev)</div>
+        <div><span class="d" style="color:var(--blue)"></span><b>Sparks</b> live price ticks (Hyperliquid)</div>
+        <div><span class="d" style="color:var(--cyan)"></span><b>JEV hub</b> · <span style="color:var(--green)">long</span>/<span style="color:var(--rose)">short</span> setup flows</div>
+        <div><span class="d" style="color:var(--purple)"></span><b>CLAUDE hub</b> · bond glows when they agree</div>
+        <div><span class="d" style="color:var(--amber)"></span><b>Amber</b> toxic flow · <b style="color:var(--rose)">red rim</b> thin book</div>
+        <div><span class="d" style="color:var(--text)"></span><b>Rings</b> risk checks · satellites = open trades</div>
+      </div>
+      <div class="ov focus"><button class="btn" id="bOverview" type="button">Overview</button><button class="btn" id="bSpin" type="button">Auto-rotate on</button></div>
+      <div class="ov log"><h4>LIVE ACTIVITY <span id="logN"></span></h4><div id="log"></div></div>
+      <div class="ov mini"><h4><span id="miniT">—</span><span id="miniR">next 5 min · Jev fan · Claude cone</span></h4><div class="cv" id="miniBox"><canvas id="mini"></canvas></div></div>
+      <div class="nogl" id="nogl" hidden></div>
+    </div>
+
+    <div class="side">
+      <div class="blk">
+        <h3>HIP-4 market maker <em id="mmMeta"></em></h3>
+        <div class="line" style="margin:0 0 8px;font-size:10.5px">Paper quotes on Hyperliquid's "above K at T" markets around a fair price · fills only when a real trade prints through our price · held to settlement</div>
+        <div class="kv" id="mmSum"></div>
+        <div id="mmMkts" style="margin-top:10px"></div>
+        <div id="mmFills" style="margin-top:10px"></div>
+      </div>
+      <div class="blk">
+        <h3><span id="selName">—</span><em id="sigAge"></em></h3>
+        <div class="big" id="bigPx">—</div>
+        <div class="line" id="selMeta"></div>
+      </div>
+      <div class="blk">
+        <h3>Next <span id="hz">5 min</span></h3>
+        <div class="who" style="--c:var(--jev)"><i></i>JEV <span class="t2" id="jRegime"></span></div>
+        <div id="jProbs"></div>
+        <div id="jSetup" style="margin-top:10px"></div>
+        <div class="line" id="jEdge"></div>
+        <div class="line" id="jAct">—</div>
+        <div class="who" style="--c:var(--claude);margin-top:16px"><i></i>CLAUDE <span class="t2" id="cAge"></span></div>
+        <div id="cProbs"></div>
+        <div class="line" id="cExp">—</div>
+        <div class="reason" id="cWhy"></div>
+      </div>
+      <div class="blk"><h3>Position <em>Jev book</em></h3><div id="pos" class="kv"></div></div>
+      <div class="blk">
+        <h3>Bet size <em id="szEff"></em></h3>
+        <div id="szBtns" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+          <button class="btn" type="button" data-m="0.5">0.5×</button><button class="btn" type="button" data-m="1">1×</button>
+          <button class="btn" type="button" data-m="1.5">1.5×</button><button class="btn" type="button" data-m="2">2×</button>
+          <button class="btn" type="button" data-m="3">3×</button><button class="btn" type="button" data-m="5">5×</button>
+          <input id="szIn" type="number" min="0.1" step="0.1" aria-label="Custom multiplier" style="width:58px;font:500 11px var(--mono);background:none;color:var(--text);border:1px solid var(--hair-2);border-radius:6px;padding:4px 6px">
+        </div>
+        <div class="line" style="margin-top:8px"><button class="btn" type="button" id="szStreak">Streak boost off</button> <span id="szStreakInfo" class="t2" style="font-size:10.5px"></span></div>
+        <div class="line" id="szNote" style="font-size:10.5px"></div>
+      </div>
+      <div class="blk">
+        <h3>Regime check <em id="rgMeta"></em></h3>
+        <div class="line" id="rgNow" style="font-size:10.5px;margin:0"></div>
+        <div class="line" id="rgWeek" style="font-size:10.5px"></div>
+      </div>
+      <div class="blk">
+        <h3>Right when price moved <em id="scH">5-min calls</em></h3>
+        <div class="score">
+          <div><div class="who" style="--c:var(--jev);margin:0"><i></i>JEV</div><div class="n" id="scJ">—</div><div class="s" id="scJs"></div></div>
+          <div><div class="who" style="--c:var(--claude);margin:0"><i></i>CLAUDE</div><div class="n" id="scC">—</div><div class="s" id="scCs"></div></div>
+        </div>
+        <div class="line" style="font-size:10.5px">50% = coin flip</div>
+      </div>
+      <div class="blk">
+        <h3>Hourly test <em id="hrNext"></em></h3>
+        <div class="line" style="margin:0 0 8px;font-size:10.5px">P(price above K at the next hour) · lower log loss = better · the model is the bar to beat</div>
+        <div id="hrScore"></div>
+        <div id="hrCoin" style="margin-top:10px"></div>
+      </div>
+      <div class="blk">
+        <h3>HIP-4 markets <em id="h4Meta"></em></h3>
+        <div class="line" style="margin:0 0 8px;font-size:10.5px">Hyperliquid's own "above K at T" markets · the price is the market's probability · can anyone beat it? (paper)</div>
+        <div id="h4Score"></div>
+        <div id="h4Coin" style="margin-top:10px"></div>
+      </div>
+      <div class="blk"><h3>Paper books</h3><div class="kv" id="books"></div></div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+
+const $ = id => document.getElementById(id);
+const TOKEN = new URLSearchParams(location.search).get("token");   // HELIX_TOKEN (phone / LAN access), like the dashboard
+if (TOKEN) { const f0 = window.fetch.bind(window); window.fetch = (u, o = {}) => String(u).startsWith("/api/") ? f0(u, { ...o, headers: { ...(o.headers || {}), "x-helix-token": TOKEN } }) : f0(u, o); }
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const K = { text: css("--text"), text2: css("--text-2"), muted: css("--muted"), up: css("--up"), down: css("--down"), cyan: css("--cyan"), blue: css("--blue"),
+  purple: css("--purple"), indigo: css("--indigo"), rose: css("--rose"), green: css("--green"), amber: css("--amber"), mono: css("--mono") };
+const nowS = () => Date.now() / 1000;
+function fp(v) { if (v == null || !isFinite(v)) return "—"; const a = Math.abs(v); if (a >= 1000) return v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }); if (a >= 10) return v.toFixed(2); if (a >= 1) return v.toFixed(4); return v.toPrecision(5); }
+const pct = v => v == null || !isFinite(v) ? "—" : Math.round(v * 100) + "%";
+const sbps = v => v == null || !isFinite(v) ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + " bps";
+const usd = v => v == null || !isFinite(v) ? "—" : (v >= 0 ? "+$" : "−$") + Math.abs(v).toFixed(2);
+function ago(t) { const s = Math.max(0, nowS() - t); return s < 60 ? Math.floor(s) + "s" : Math.floor(s / 60) + "m" + String(Math.floor(s % 60)).padStart(2, "0"); }
+function setText(el, s) { if (el && el.textContent !== s) el.textContent = s; }
+function setStatus(id, cls, text) { const el = $(id); el.className = cls; el.lastChild.textContent = text; }
+const sup = s => s?.probabilities ? (+s.probabilities["2"] || 0) + (+s.probabilities["3"] || 0) : null;   // P(setup >= Supported)
+const dirProbs = m => m?.decision?.answers?.direction?.probabilities || null;
+
+/* ===================================================================== data: Helix + Claude + Hyperliquid */
+let S = null, C = null, horizon = 300, coins = [], sel = null;
+const M = {};
+const cs = c => M[c] || (M[c] = { live: [], disp: null, target: null, dir: 0, tickQ: 0, lastTick: 0 });
+let wsOk = false, wsTimes = [];
+
+async function pollState() {
+  try {
+    S = await (await fetch("/api/state", { cache: "no-store" })).json();
+    horizon = S.config?.horizon_s || horizon;
+    const list = S.config?.coins || Object.keys(S.markets || {});
+    if (list.join() !== coins.join()) { coins = list; if (!sel || !coins.includes(sel)) sel = coins[0]; buildRows(); subscribe(); if (world) world.build(coins); }
+    for (const c of coins) { const m = S.markets?.[c], st = cs(c); if (m?.mid && (st.target == null || !wsOk)) { st.target = m.mid; if (st.disp == null) st.disp = m.mid; } }
+    detectEvents();
+  } catch { setStatus("sJev", "bad", "HELIX OFFLINE"); }
+}
+async function pollClaude() { try { C = await (await fetch("/api/claude", { cache: "no-store" })).json(); detectClaude(); } catch { C = null; } }
+let H = null;
+async function pollHourly() { try { H = await (await fetch("/api/hourly", { cache: "no-store" })).json(); renderHourly(); } catch { H = null; } }
+function renderHourly() {
+  if (!H || H.enabled === false) { $("hrScore").innerHTML = `<div class="line">hourly test is off</div>`; return; }
+  const LBL = { model: ["Lognormal", K.muted], model_emp: ["Baseline", K.text2], jev: ["Jev v1", K.cyan], jev_v2: ["Jev v2", K.cyan], jev_v3: ["Jev v3", K.cyan], claude: ["Claude", K.purple] };
+  const s = H.scores || {}, rows = (H.forecasters || ["model", "model_emp", "jev", "claude"]).map(w => [(LBL[w] || [w])[0], s[w], (LBL[w] || [w, K.text])[1], w]);
+  const sg = g => g == null ? "—" : (g >= 0 ? "+" : "") + g.toFixed(3);
+  $("hrScore").innerHTML = `<div class="kv" style="grid-template-columns:1fr auto auto auto;font-size:11px">
+    <span class="muted">forecaster</span><b class="muted">log loss</b><b class="muted">ATM vs base</b><b class="muted">n</b>` +
+    rows.map(([n, x, col, w]) => {
+      const g = x?.primary_gain;
+      const v = !x?.bar ? `<span class="muted">${n === "Baseline" ? "the bar" : "—"}</span>`
+        : x.beats_bar === true ? `<span class="up">beats ✓</span>`
+        : x.beats_bar === false ? `<span class="down">${sg(g)}</span>`
+        : `<span class="t2" title="${esc(x.verdict || "")}${x.primary_ci ? " · CI " + x.primary_ci.join(" … ") : ""}">${sg(g)}</span>`;
+      const tip = H.variants?.[w] ? ` title="${esc(H.variants[w])}"` : "";
+      return `<span style="color:${col}"${tip}>${n}</span><b>${x?.n ? x.logloss.toFixed(3) : "—"}</b><b>${v}</b><b class="t2">${x?.hours ?? 0}h</b>`; }).join("") + `</div>
+    <div class="line" style="font-size:10.5px">${s.jev?.verdict ? esc(s.jev.verdict) : `${H.resolved_rounds}/${H.target_hours} hours`} · ${H.status}${H.error ? " · " + esc(H.error) : ""}</div>`;
+  const r = (H.recent || []).find(x => x.coins?.[sel]), c = r?.coins?.[sel];
+  const cols = [["base", K.text2, c && (c.model_emp || c.model)], ["v1", K.cyan, c?.jev], ...Object.keys(H.variants || {}).map(w => [w.replace("jev_", ""), K.cyan, c?.[w]]), ["cl", K.purple, c?.claude]];
+  $("hrCoin").innerHTML = !c ? `<div class="line" style="font-size:10.5px">${esc(sel)} isn't in the hourly test (${(H.coins || []).join(", ")})</div>` :
+    `<div class="kv" style="grid-template-columns:auto repeat(${cols.length + 1},1fr);font-size:10.5px;gap:3px 6px"><span class="muted">${esc(sel)} ${new Date(r.expiry * 1000).toISOString().slice(11, 16)}</span>` +
+    cols.map(([h, col]) => `<b style="color:${col}">${h}</b>`).join("") + `<b class="muted">res</b>` +
+    ["low", "mid", "high"].map((n, j) => `<span>&gt; ${fp(c.strikes[j])}</span>` + cols.map(([, , p]) => `<b>${p && p[j] != null ? pct(p[j]) : "—"}</b>`).join("") +
+      `<b>${c.outcome ? (c.outcome.above[j] ? '<span class="up">yes</span>' : '<span class="down">no</span>') : "…"}</b>`).join("") + `</div>`;
+}
+setInterval(() => { if (H?.next_round) setText($("hrNext"), "next round in " + Math.max(0, Math.round((H.next_round - nowS()) / 60)) + " min"); }, 1000);
+/* ---- bet size (Jev book): manual multiplier + optional streak boost, POST /api/sizing ---- */
+async function setSizing(body) {
+  try {
+    const r = await fetch("/api/sizing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!j.ok) logEv("WARN", "Bet size: " + (j.error || "rejected")); else logEv("RISK", `Jev bets now ${j.effective}× (manual ${j.manual}×${j.boost > 1 ? `, streak ${j.boost}×` : ""})`);
+    pollState();
+  } catch { logEv("WARN", "Bet size: Helix not reachable"); }
+}
+document.querySelectorAll("#szBtns [data-m]").forEach(b => b.addEventListener("click", () => setSizing({ multiplier: +b.dataset.m })));
+$("szIn").addEventListener("change", e => { const v = +e.target.value; if (v > 0) setSizing({ multiplier: v }); });
+$("szStreak").addEventListener("click", () => setSizing({ streak: !S?.sizing?.streak_enabled }));
+function renderSizing() {
+  const z = S?.sizing; if (!z) return;
+  setText($("szEff"), `Jev ${z.effective}× · baseline 1×`);
+  document.querySelectorAll("#szBtns [data-m]").forEach(b => b.classList.toggle("on", +b.dataset.m === z.manual));
+  if (document.activeElement !== $("szIn")) { $("szIn").value = z.manual; $("szIn").max = z.max; }
+  const sb = $("szStreak"); setText(sb, z.streak_enabled ? "Streak boost on" : "Streak boost off"); sb.classList.toggle("on", z.streak_enabled);
+  const gate = !z.gate_trades ? "no gate" : z.gate_ok ? `gate open (last ${z.gate_trades} trades ${usd(z.gate_pnl)})`
+    : `gate closed: the last ${z.gate_trades} trades must be in profit (now ${z.trades} trades${z.gate_pnl != null ? ", " + usd(z.gate_pnl) : ""})`;
+  setText($("szStreakInfo"), z.streak_enabled ? `${z.wins_in_row} wins in a row · boost ${z.boost}× · ${gate}${z.capped ? ` · boost clipped by the ${z.max}× ceiling` : ""}`
+    : `after ${z.after_wins} wins in a row: +${z.step}× per win, up to ${z.streak_max}×`);
+  $("szNote").innerHTML = `Bigger bets multiply losses too. The −${((S?.config?.risk?.max_drawdown_pct || 0) * 100).toFixed(0)}% drawdown kill switch does not scale. Max ${z.max}×.` +
+    (z.streak_enabled && z.manual * z.streak_max > z.max ? ` At ${z.manual}× manual the streak boost can add at most ${Math.max(1, z.max / z.manual).toFixed(2)}×.` : "");
+}
+/* ---- regime check: Jev v2 fades moves, so it sits out coins that have been trending; plus the weekly lab re-test ---- */
+let W = null;
+async function pollWeekly() { try { W = await (await fetch("/api/labweekly", { cache: "no-store" })).json(); } catch { W = null; } }
+function renderRegime() {
+  const sigs = coins.map(c => [c, S?.markets?.[c]?.signal]).filter(([, s]) => s && s.status === "ok");
+  const mom = sigs.filter(([, s]) => s.momentum_regime);
+  setText($("rgMeta"), sigs.length ? `${sigs.length - mom.length}/${sigs.length} coins in reversal` : "");
+  setText($("rgNow"), !sigs.length ? "waiting for Jev v2 signals" : mom.length
+    ? `Sitting out (moves kept going this week): ${mom.map(([c, s]) => `${c} ${Math.round((s.continuation || 0) * 1000) / 10}%`).join(", ")}`
+    : "Every coin is in the reversal regime Jev v2 is built for (7-day continuation under 50%)");
+  const L = W?.latest;
+  const wk = !W || W.enabled === false ? "weekly lab re-test is off" : W.running ? "weekly lab re-test running now…"
+    : L ? `<span class="${L.alert ? "down" : "t2"}">${esc(L.headline)}</span> · ${new Date(L.ts * 1000).toISOString().slice(0, 10)}`
+    : `first weekly lab re-test ${W.next_run ? "on " + new Date(W.next_run * 1000).toISOString().slice(0, 10) : "pending"}`;
+  if ($("rgWeek")._h !== wk) { $("rgWeek").innerHTML = wk; $("rgWeek")._h = wk; }
+}
+let MM = null;
+async function pollMM() { try { MM = await (await fetch("/api/hip4mm", { cache: "no-store" })).json(); renderMM(); } catch { MM = null; } }
+function renderMM() {
+  if (!MM || MM.enabled === false) { $("mmSum").innerHTML = `<span>Status</span><b class="t2">off (hip4_mm.enabled in config.yaml)</b>`; $("mmMkts").innerHTML = $("mmFills").innerHTML = ""; return; }
+  const c = v => v == null ? "—" : (v * 100).toFixed(1) + "¢", sc = v => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(2) + "¢";
+  const st = MM.stats || {}, ws = MM.ws || {};
+  setText($("mmMeta"), `${MM.killed ? "STOPPED" : MM.status} · ${ws.connected ? ws.subs + " books live" : "stream reconnecting"}`);
+  $("mmMeta").style.color = MM.killed ? K.down : "";
+  $("mmSum").innerHTML = `<span>P&amp;L</span><b class="${MM.pnl >= 0 ? "up" : "down"}">${usd(MM.pnl)} <span class="t2">on $${Math.round(MM.start_cash).toLocaleString()}</span></b>`
+    + `<span>Open risk</span><b>$${(MM.risk || 0).toFixed(0)} <span class="t2">of $${MM.config?.max_risk_usd} cap · dd ${((MM.drawdown || 0) * 100).toFixed(1)}%</span></b>`
+    + `<span>Fills</span><b>${st.fills} <span class="t2">· ${st.contracts} contracts</span></b>`
+    + `<span title="(fair − price) at the moment of the fill, per contract: the spread we captured">Edge at fill</span><b class="${(st.avg_edge || 0) >= 0 ? "up" : "down"}">${sc(st.avg_edge)}</b>`
+    + `<span title="(fair 60 s later − our price), per contract: negative means we are being picked off">60 s markout</span><b class="${st.avg_markout == null ? "t2" : st.avg_markout >= 0 ? "up" : "down"}">${sc(st.avg_markout)} <span class="t2">n=${st.markouts}</span></b>`
+    + `<span>Settled</span><b class="${(st.settled_pnl || 0) >= 0 ? "up" : "down"}">${usd(st.settled_pnl)} <span class="t2">· ${st.settled_wins}/${st.settled} markets won</span></b>`
+    + (MM.killed ? `<span>Stopped</span><b class="down">${esc(MM.kill_reason || "")}</b>` : "")
+    + (MM.error ? `<span>Note</span><b class="t2" style="font-size:10px">${esc(MM.error)}</b>` : "");
+  const rows = (MM.markets || []).filter(m => m.tte_min > 0).slice(0, 12);
+  $("mmMkts").innerHTML = !rows.length ? `<div class="line" style="font-size:10.5px">no markets inside ${MM.config?.max_tte_min} min yet</div>` :
+    `<div class="kv" style="grid-template-columns:auto auto auto auto auto;font-size:10px;gap:3px 6px"><span class="muted">market</span><b class="muted">mkt bid/ask</b><b style="color:${K.cyan}">our bid/ask</b><b class="muted">fair</b><b class="muted">pos</b>` +
+    rows.map(m => { const live = m.bid != null || m.ask != null;
+      return `<span title="#${m.id} · ${esc(m.venue)} · expires ${new Date(m.expiry * 1000).toISOString().slice(11, 16)} UTC" style="${live ? "" : "opacity:.55"}">${esc(m.coin)} &gt;${fp(m.strike)} <span class="t2">${Math.max(0, Math.round(m.tte_min))}m</span></span>`
+        + `<b class="t2">${m.mkt_bid != null && m.mkt_ask != null && m.mkt_ask - m.mkt_bid > 0.9 ? "no book" : `${c(m.mkt_bid)}/${c(m.mkt_ask)}`}</b>`
+        + `<b style="color:${live ? K.cyan : K.muted}">${live ? `${c(m.bid)}/${c(m.ask)}` : "—"}</b>`
+        + `<b>${c(m.fair)}</b>`
+        + `<b class="${m.qty > 0 ? "up" : m.qty < 0 ? "down" : "t2"}">${m.qty ? (m.qty > 0 ? "+" : "") + m.qty : "·"}</b>`; }).join("") + `</div>`;
+  const fl = (MM.fills || []).slice(0, 6);
+  $("mmFills").innerHTML = !fl.length ? `<div class="line" style="font-size:10.5px">no fills yet · quotes ±${c(MM.config?.edge)} from fair, ${MM.config?.quote_size} contracts each</div>` :
+    `<div class="line" style="font-size:10.5px;margin:0 0 4px">recent fills (edge · 60 s markout)</div>` + fl.map(f =>
+      `<div class="line" style="font-size:10.5px;margin:1px 0"><span class="badge ${f.side > 0 ? "long" : "short"}">${f.side > 0 ? "BUY" : "SELL"}</span> ${f.qty} ${esc(f.coin)} &gt;${fp(f.strike)} @ ${c(f.px)} <span class="t2">· ${sc(f.edge)} · ${f.markout == null ? "…" : sc(f.markout)} · ${ago(f.ts)} ago</span></div>`).join("");
+}
+
+let H4 = null;
+async function pollHip4() { try { H4 = await (await fetch("/api/hip4", { cache: "no-store" })).json(); renderHip4(); } catch { H4 = null; } }
+function renderHip4() {
+  if (!H4 || H4.enabled === false) { $("h4Score").innerHTML = `<div class="line">HIP-4 recorder is off</div>`; return; }
+  setText($("h4Meta"), `${H4.scored} near-money · ${H4.scored_all} all · ${H4.snapshots} snapshots`);
+  const LBL = { market: ["Market", K.amber], model: ["Lognormal", K.muted], model_emp: ["Baseline", K.text2], jev: ["Jev v1", K.cyan], jev_v2: ["Jev v2", K.cyan], jev_v3: ["Jev v3", K.cyan], claude: ["Claude", K.purple] };
+  const sg = g => g == null ? "—" : (g >= 0 ? "+" : "") + g.toFixed(3), s = H4.scores || {};
+  $("h4Score").innerHTML = `<div class="kv" style="grid-template-columns:1fr auto auto auto;font-size:11px">
+    <span class="muted">forecaster</span><b class="muted">vs market</b><b class="muted">¢/trade</b><b class="muted">n</b>` +
+    (H4.forecasters || Object.keys(LBL)).map(w => { const x = s[w] || {}, [n, col] = LBL[w] || [w, K.text];
+      const g = w === "market" ? `<span class="muted">the bar</span>` : x.gain_vs_market == null ? "—" :
+        `<span class="${x.gain_ci && x.gain_ci[0] > 0 ? "up" : x.gain_ci && x.gain_ci[1] < 0 ? "down" : "t2"}" title="${x.gain_ci ? "95% CI " + x.gain_ci.join(" … ") : "too few blocks for a CI"}">${sg(x.gain_vs_market)}</span>`;
+      const t = w === "market" || x.cents_per_trade == null ? "—" : `<span class="${x.cents_per_trade >= 0 ? "up" : "down"}">${x.cents_per_trade >= 0 ? "+" : ""}${x.cents_per_trade.toFixed(1)} (${x.trades})</span>`;
+      return `<span style="color:${col}">${n}</span><b>${g}</b><b>${t}</b><b class="t2">${x.n || 0}</b>`; }).join("") + `</div>
+    <div class="line" style="font-size:10.5px">near-the-money markets (strike within ${H4.near_money}σ, perp-settled) · vs market = log-loss gain over the market mid (+ = better) · trade = ${Math.round((H4.edge || 0) * 100)}¢ past the bid/ask · ${esc(H4.status)}${H4.error ? " · " + esc(H4.error) : ""}</div>`;
+  const rs = (H4.recent || []).filter(x => x.coin === sel).slice(0, 4);
+  const p = v => v == null ? "—" : pct(v);
+  const jcols = (H4.forecasters || []).filter(w => w.startsWith("jev"));
+  const res = x => x.void ? '<span class="t2">void</span>' : x.y == null ? "…" : x.y === 0.5 ? "½" : x.y > 0.5 ? '<span class="up">yes</span>' : '<span class="down">no</span>';
+  $("h4Coin").innerHTML = !rs.length ? `<div class="line" style="font-size:10.5px">no ${esc(sel)} snapshots yet${(H4.upcoming || []).length ? " · next: " + H4.upcoming.slice(0, 3).map(u => `${u.coin} ${u.venue} in ${Math.round(u.tte_min)}m`).join(", ") : ""}</div>` :
+    `<div class="kv" style="grid-template-columns:auto repeat(${jcols.length + 4},1fr);font-size:10px;gap:3px 5px"><span class="muted">${esc(sel)}</span><b style="color:${K.amber}">bid/ask</b><b class="muted">base</b>` +
+    jcols.map(w => `<b style="color:${K.cyan}">${w === "jev" ? "v1" : w.replace("jev_", "")}</b>`).join("") + `<b style="color:${K.purple}">cl</b><b class="muted">res</b>` +
+    rs.map(x => `<span title="${esc(x.venue)} · ${esc(x.source)} · settles ${esc(x.rule)} strike · ${x.primary ? "in the primary comparison" : "outside the primary band"}" style="${x.primary ? "" : "opacity:.6"}">${new Date(x.expiry * 1000).toISOString().slice(11, 16)} &gt;${fp(x.strike)}</span><b>${x.bid != null ? Math.round(x.bid * 100) : "—"}/${x.ask != null ? Math.round(x.ask * 100) : "—"}¢</b><b>${p(x.model_emp)}</b>` +
+      jcols.map(w => `<b>${p(x[w])}</b>`).join("") + `<b>${p(x.claude)}</b><b>${res(x)}</b>`).join("") + `</div>`;
+}
+
+let ws = null; const subs = new Set();
+function connect() {
+  ws = new WebSocket("wss://api.hyperliquid.xyz/ws");
+  ws.onopen = () => { wsOk = true; subs.clear(); subscribe(); };
+  ws.onclose = () => { wsOk = false; setTimeout(connect, 2500); };
+  ws.onerror = () => {};
+  ws.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.channel !== "bbo" || !m.data?.bbo) return;
+    const t = nowS(); wsTimes.push(t);
+    const [b, a] = m.data.bbo; if (!b || !a) return;
+    const mid = (parseFloat(b.px) + parseFloat(a.px)) / 2, st = cs(m.data.coin);
+    if (st.target != null && mid !== st.target) { st.dir = mid > st.target ? 1 : -1; st.tickQ++; st.lastTick = t; pulse("tick"); }
+    st.target = mid; if (st.disp == null) st.disp = mid;
+    const L = st.live, last = L[L.length - 1];
+    if (!last || t - last[0] >= 0.1) L.push([t, mid]); else last[1] = mid;
+    while (L.length && t - L[0][0] > 660) L.shift();
+  };
+}
+function subscribe() {
+  if (!ws || ws.readyState !== 1) return;
+  for (const c of coins) { if (subs.has(c)) continue; subs.add(c); ws.send(JSON.stringify({ method: "subscribe", subscription: { type: "bbo", coin: c } })); }
+}
+setInterval(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ method: "ping" })); }, 30000);
+
+/* ===================================================================== sound (synthesized, no files) */
+const Sound = (() => {
+  let ac = null, bus = null, enabled = false;
+  const pref = (() => { try { return localStorage.getItem("helix-sound") === "on"; } catch { return false; } })();
+  function impulse(sec, decay) { const len = Math.floor(ac.sampleRate * sec), b = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay); } return b; }
+  function ensure() {
+    if (ac) return true; try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { return false; }
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 3;
+    const out = ac.createGain(); out.gain.value = 0.85; bus = ac.createGain();
+    const verb = ac.createConvolver(); verb.buffer = impulse(2.2, 3.2); const wet = ac.createGain(); wet.gain.value = 0.26;
+    const tone = ac.createBiquadFilter(); tone.type = "highshelf"; tone.frequency.value = 7000; tone.gain.value = -4;
+    bus.connect(tone); tone.connect(comp); tone.connect(verb); verb.connect(wet); wet.connect(comp); comp.connect(out); out.connect(ac.destination); return true;
+  }
+  function bell(f, t, { dur = 1.4, gain = 0.22, ratio = 3.5, index = 2.0, pan = 0 } = {}) {
+    const car = ac.createOscillator(), mod = ac.createOscillator(), mg = ac.createGain(), amp = ac.createGain(), p = ac.createStereoPanner();
+    car.frequency.value = f; mod.frequency.value = f * ratio; mg.gain.setValueAtTime(f * index, t); mg.gain.exponentialRampToValueAtTime(Math.max(1, f * 0.02), t + dur * 0.7);
+    mod.connect(mg); mg.connect(car.frequency); amp.gain.setValueAtTime(0.0001, t); amp.gain.exponentialRampToValueAtTime(gain, t + 0.006); amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    p.pan.value = pan; car.connect(amp); amp.connect(p); p.connect(bus); car.start(t); mod.start(t); car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+  }
+  function pluck(f, t, { dur = 0.7, gain = 0.2, cutoff = 1400, type = "triangle" } = {}) {
+    const o = ac.createOscillator(), o2 = ac.createOscillator(), lp = ac.createBiquadFilter(), amp = ac.createGain();
+    o.type = type; o2.type = "sine"; o.frequency.value = f; o2.frequency.value = f * 1.003;
+    lp.type = "lowpass"; lp.frequency.setValueAtTime(cutoff * 2.5, t); lp.frequency.exponentialRampToValueAtTime(cutoff * 0.4, t + dur);
+    amp.gain.setValueAtTime(0.0001, t); amp.gain.exponentialRampToValueAtTime(gain, t + 0.01); amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(lp); o2.connect(lp); lp.connect(amp); amp.connect(bus); o.start(t); o2.start(t); o.stop(t + dur + 0.05); o2.stop(t + dur + 0.05);
+  }
+  function whoosh(t, { dur = 0.9, gain = 0.16, from = 300, to = 3200 } = {}) {
+    const len = Math.floor(ac.sampleRate * dur), b = ac.createBuffer(1, len, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource(), bp = ac.createBiquadFilter(), amp = ac.createGain(); src.buffer = b; bp.type = "bandpass"; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(from, t); bp.frequency.exponentialRampToValueAtTime(to, t + dur); amp.gain.setValueAtTime(0.0001, t); amp.gain.exponentialRampToValueAtTime(gain, t + dur * 0.35); amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp); bp.connect(amp); amp.connect(bus); src.start(t); src.stop(t + dur);
+  }
+  const N = { E5: 659.25, B5: 987.77, C6: 1046.5, E6: 1318.5, G6: 1568, C7: 2093, A3: 220, F3: 174.6, C4: 261.6, E4: 329.6, G4: 392 };
+  const fx = {
+    longOpen(q = 1) { const t = ac.currentTime + 0.01; bell(N.E5, t, { gain: 0.2 * q, pan: -0.15 }); bell(N.B5, t + 0.09, { gain: 0.17 * q, pan: 0.15 }); },
+    shortOpen(q = 1) { const t = ac.currentTime + 0.01; bell(N.B5, t, { gain: 0.18 * q, ratio: 2.76, index: 2.4, pan: 0.15 }); bell(N.E5, t + 0.09, { gain: 0.2 * q, ratio: 2.76, index: 2.4, pan: -0.15 }); },
+    win(q = 1) { const t = ac.currentTime + 0.01; [N.C6, N.E6, N.G6, N.C7].forEach((f, i) => bell(f, t + i * 0.065, { gain: (0.17 - i * 0.025) * q, dur: 1.6, ratio: 2, index: 1.2, pan: -0.3 + i * 0.2 })); },
+    loss(q = 1) { const t = ac.currentTime + 0.01; pluck(N.A3, t, { gain: 0.22 * q, cutoff: 900 }); pluck(N.F3, t + 0.12, { gain: 0.2 * q, cutoff: 700, dur: 0.9 }); },
+    forecast() { const t = ac.currentTime + 0.01; bell(N.G6, t, { gain: 0.09, ratio: 2.0, index: 0.6, dur: 1.8 }); bell(N.G6 * 2, t + 0.02, { gain: 0.035, ratio: 1.0, index: 0.2, dur: 1.2 }); },
+    hit() { const t = ac.currentTime + 0.01; pluck(N.E6, t, { gain: 0.09, cutoff: 5000, type: "sine", dur: 0.35 }); pluck(N.G6, t + 0.07, { gain: 0.08, cutoff: 5000, type: "sine", dur: 0.45 }); },
+    miss() { const t = ac.currentTime + 0.01; pluck(N.E4, t, { gain: 0.1, cutoff: 1200, type: "sine", dur: 0.35 }); pluck(N.C4, t + 0.08, { gain: 0.09, cutoff: 1000, type: "sine", dur: 0.45 }); },
+    reset() { const t = ac.currentTime + 0.01; whoosh(t); [N.C4, N.G4, N.E5].forEach((f, i) => pluck(f, t + 0.25 + i * 0.03, { gain: 0.1, cutoff: 2200, dur: 1.4 })); },
+    on() { const t = ac.currentTime + 0.01; bell(N.C6, t, { gain: 0.1, ratio: 2, index: 0.8 }); bell(N.G6, t + 0.08, { gain: 0.08, ratio: 2, index: 0.8 }); },
+  };
+  function play(name, ...a) { if (!enabled || !ensure()) return; if (ac.state === "suspended") ac.resume(); try { fx[name](...a); } catch {} }
+  function set(on) { enabled = on; try { localStorage.setItem("helix-sound", on ? "on" : "off"); } catch {} if (on && ensure()) { ac.resume(); fx.on(); } }
+  return { play, set, get enabled() { return enabled; }, pref };
+})();
+function renderSoundBtn() { const b = $("bSound"); b.classList.toggle("on", Sound.enabled); b.textContent = Sound.enabled ? "♪ Sound on" : "♪ Sound off"; }
+$("bSound").onclick = () => { Sound.set(!Sound.enabled); renderSoundBtn(); };
+if (Sound.pref) window.addEventListener("pointerdown", function once() { if (!Sound.enabled) { Sound.set(true); renderSoundBtn(); } }, { once: true });
+
+/* ===================================================================== activity log + pipeline */
+const LOG = []; const TAGC = { TICK: K.blue, JEV: K.cyan, CLAUDE: K.purple, RISK: K.amber, EXEC: K.green, WIN: K.green, LOSS: K.rose, INFO: K.text2 };
+function logEv(tag, text) { LOG.unshift({ t: nowS(), tag, text }); if (LOG.length > 60) LOG.length = 60; }
+const pipeLit = {};
+function pulse(k) { pipeLit[k] = performance.now(); }
+function renderLog() {
+  $("log").innerHTML = LOG.slice(0, 9).map(e => `<div class="r"><span class="tm">${new Date(e.t * 1000).toLocaleTimeString([], { hour12: false })}</span><span class="k" style="color:${TAGC[e.tag] || K.text2}">${e.tag}</span>${esc(e.text)}</div>`).join("") || `<div class="r muted">waiting for signals…</div>`;
+  setText($("logN"), LOG.length ? LOG.length + " events" : "");
+  const t = performance.now();
+  document.querySelectorAll("#pipe span").forEach(s => s.classList.toggle("lit", t - (pipeLit[s.dataset.k] || -1e9) < 700));
+}
+
+/* ===================================================================== events -> cortex effects + sounds */
+const seen = { dec: {}, risk: {}, pos: null, trades: null, claude: {}, claudeRun: null, scored: null, ev: 0 };
+function detectEvents() {
+  if (!S) return;
+  for (const c of coins) {
+    const d = S.markets?.[c]?.decision; if (!d?.ts) continue;
+    if (seen.dec[c] && d.ts !== seen.dec[c]) {
+      const p = d.answers?.direction?.probabilities, a = d.jev_action;
+      if (p) { const k = (p.up || 0) >= (p.down || 0) ? "▲ " + pct(p.up) : "▼ " + pct(p.down);
+        logEv("JEV", `${c} ${k} · ${a ? a.kind.replace("_", " ").toLowerCase() : ""}${a?.reasons?.[0] ? " · " + a.reasons[0] : ""}`); }
+      pulse("jev"); world?.jevPulse(c);
+      const r = d.risk?.jev;
+      if (r && r.approved !== undefined) { pulse("risk"); world?.riskPing(c, !!r.approved); logEv("RISK", `${c} ${r.approved ? "approved" : "blocked"}${r.reason ? " · " + r.reason : ""}`); }
+    }
+    seen.dec[c] = d.ts;
+  }
+  const posList = []; for (const [book, b] of Object.entries(S.books || {})) for (const p of (b.positions || [])) posList.push({ ...p, book });
+  const tradeKey = t => `${t.book}|${t.coin}|${t.opened}`, trades = S.trades || [];
+  if (seen.pos) {
+    for (const p of posList) if (!seen.pos.has(tradeKey(p))) {
+      Sound.play(p.side > 0 ? "longOpen" : "shortOpen", p.book === "jev" ? 1 : 0.45); pulse("exec");
+      world?.tradeOpen(p); logEv("EXEC", `${p.book === "jev" ? "JEV" : "BASE"} ${p.side > 0 ? "LONG" : "SHORT"} ${p.coin} @ ${fp(p.entry)}`);
+    }
+    for (const t of trades) if (!seen.trades.has(tradeKey(t))) {
+      Sound.play(t.pnl >= 0 ? "win" : "loss", t.book === "jev" ? 1 : 0.45);
+      world?.tradeClose(t); logEv(t.pnl >= 0 ? "WIN" : "LOSS", `${t.book === "jev" ? "JEV" : "BASE"} ${t.coin} ${usd(t.pnl)} (${sbps(t.pnl_bps)}) · ${t.reason || ""}`);
+    }
+  }
+  seen.pos = new Set(posList.map(tradeKey)); seen.trades = new Set(trades.map(tradeKey));
+  world?.syncPositions(posList);
+}
+function detectClaude() {
+  if (!C) return;
+  if (seen.claudeRun !== null && C.last_run && C.last_run !== seen.claudeRun) {
+    Sound.play("forecast"); pulse("claude");
+    for (const [c, f] of Object.entries(C.latest || {})) if (f.ts === C.last_run || Math.abs(f.ts - C.last_run) < 5) { world?.claudeBurst(c, f); logEv("CLAUDE", `${c} ${f.choice.toUpperCase()} ${sbps(f.expected_bps)} · ${f.reason}`); }
+  }
+  if (seen.scored) { const fresh = (C.history || []).filter(h => !seen.scored.has(h.ts + "|" + h.coin));
+    if (fresh.length) { const hits = fresh.filter(h => h.correct).length; Sound.play(hits * 2 >= fresh.length ? "hit" : "miss"); logEv("CLAUDE", `${fresh.length} forecast${fresh.length > 1 ? "s" : ""} scored: ${hits} right`); } }
+  seen.claudeRun = C.last_run || null; seen.scored = new Set((C.history || []).map(h => h.ts + "|" + h.coin));
+}
+
+/* ===================================================================== reset (paper only) */
+let armed = null;
+$("bReset").onclick = async () => {
+  const b = $("bReset");
+  if (!armed) { b.classList.add("armed"); b.textContent = "Confirm reset?"; armed = setTimeout(() => { armed = null; b.classList.remove("armed"); b.textContent = "Reset paper"; }, 4000); return; }
+  clearTimeout(armed); armed = null; b.classList.remove("armed"); b.textContent = "Resetting…";
+  try { const r = await fetch("/api/reset", { method: "POST" }); b.textContent = r.ok ? "Reset ✓" : "Reset failed"; if (r.ok) { Sound.play("reset"); world?.shock(); logEv("INFO", "Paper books reset to starting cash"); } }
+  catch { b.textContent = "Reset failed"; }
+  seen.pos = seen.trades = null; setTimeout(() => { b.textContent = "Reset paper"; }, 2500); pollState();
+};
+
+/* ===================================================================== the 3D cortex */
+const COL = { up: new THREE.Color(K.green), down: new THREE.Color(K.rose), neutral: new THREE.Color(K.indigo), cyan: new THREE.Color(K.cyan),
+  purple: new THREE.Color(K.purple), amber: new THREE.Color(K.amber), blue: new THREE.Color(K.blue), white: new THREE.Color("#e2e8f0"), dim: new THREE.Color("#1e293b") };
+const leanColor = (p, out) => {   // probability-weighted mix: up = green, down = rose, neutral = indigo
+  if (!p) return out.copy(COL.neutral).multiplyScalar(0.6);
+  const u = p.up || 0, d = p.down || 0, n = p.neutral || 0;
+  return out.setRGB(COL.up.r * u + COL.down.r * d + COL.neutral.r * n, COL.up.g * u + COL.down.g * d + COL.neutral.g * n, COL.up.b * u + COL.down.b * d + COL.neutral.b * n);
+};
+
+let world = null;
+function makeWorld() {
+  const stage = $("stage"), canvas = $("gl");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color("#030712"); scene.fog = new THREE.FogExp2("#05080f", 0.0085);
+  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 2000); camera.position.set(0, 26, 66);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = 0.06; controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
+  controls.minDistance = 14; controls.maxDistance = 150; controls.enablePan = false; controls.target.set(0, 0, 0);
+  const labelR = new CSS2DRenderer({ element: $("labels") });
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const BLOOM = 0.95;
+  const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), BLOOM, 0.55, 0.14); composer.addPass(bloom); composer.addPass(new OutputPass());
+  let bloomKick = 0;
+
+  // ---- starfield + floor grid
+  { const n = 1600, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const r = 180 + Math.random() * 260, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+      pos[i * 3] = r * Math.sin(ph) * Math.cos(th); pos[i * 3 + 1] = r * Math.cos(ph) * 0.6; pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th); }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x7dd3fc, size: 0.6, transparent: true, opacity: 0.45, depthWrite: false })));
+    const grid = new THREE.PolarGridHelper(46, 12, 8, 96, 0x0e7490, 0x0e3a52); grid.position.y = -13; grid.material.transparent = true; grid.material.opacity = 0.22; scene.add(grid); }
+
+  // ---- the core: noise-displaced fresnel orb + wire shell + brain point cloud
+  const coreUni = { uTime: { value: 0 }, uAmp: { value: 0.6 }, uColA: { value: COL.cyan.clone() }, uColB: { value: COL.purple.clone() }, uGlow: { value: 1 } };
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(5.6, 6), new THREE.ShaderMaterial({
+    uniforms: coreUni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `uniform float uTime; uniform float uAmp; varying vec3 vN; varying vec3 vV; varying float vD;
+      float h(vec3 p){ p = fract(p * 0.3183099 + .1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float n3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      void main(){ float n = n3(position * 0.42 + uTime * 0.55) * 0.65 + n3(position * 1.1 - uTime * 0.9) * 0.35; vD = n;
+        vec3 p = position + normal * (n - 0.45) * uAmp * 2.2; vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uColA; uniform vec3 uColB; uniform float uGlow; varying vec3 vN; varying vec3 vV; varying float vD;
+      void main(){ float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+        vec3 c = mix(uColA, uColB, rim) * (0.06 + 1.15 * rim) + uColA * vD * 0.16 * uGlow; gl_FragColor = vec4(c, 0.35 + 0.5 * rim); }`,
+  }));
+  scene.add(core);
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(7.4, 2), new THREE.MeshBasicMaterial({ color: K.cyan, wireframe: true, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(shell);
+  const brain = (() => { const n = 2600, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), c1 = new THREE.Color(K.indigo), c2 = new THREE.Color(K.purple), tmp = new THREE.Color();
+    for (let i = 0; i < n; i++) { const side = i % 2 ? 1 : -1, u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1), j = 0.92 + Math.random() * 0.12;
+      const x = Math.sin(v) * Math.cos(u), y = Math.cos(v), z = Math.sin(v) * Math.sin(u);
+      pos[i * 3] = side * (2.4 + Math.abs(x) * 6.2 * j); pos[i * 3 + 1] = y * 7.2 * j; pos[i * 3 + 2] = z * 9.6 * j;
+      tmp.copy(c1).lerp(c2, Math.random()); col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b; }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    const p = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(p); return p; })();
+
+  // ---- sprite texture for photons
+  const spr = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.25, "rgba(255,255,255,.75)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+
+  // ---- dynamic topology, rebuilt when the coin list changes
+  const NPL = 64, HUBS = ["JEV", "CLAUDE", "RISK", "EXEC"], HUBC = [COL.cyan, COL.purple, COL.amber, COL.up];
+  let G = null;
+  const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpC = new THREE.Color(), mtx = new THREE.Matrix4();
+
+  function build(list) {
+    if (G) { for (const o of G.objects) { scene.remove(o); o.geometry?.dispose?.(); } for (const l of G.lobes) l.label.element.remove(); }
+    // ring radius grows with the number of markets so lobes (about 16 units wide with their hubs) never overlap
+    const L = list.length, R = Math.max(26, L * 19 / (2 * Math.PI)), lobes = [], objects = [];
+    const zoom = R / 26;
+    // a big ring is viewed from higher up, so the far side's labels sit above the near side's instead of on them
+    const lift = L > 8 ? 1.75 : 1;
+    overview.pos.set(0, 26 * zoom * lift, 66 * zoom / Math.sqrt(lift)); controls.maxDistance = Math.max(150, 150 * zoom);
+    scene.fog.density = 0.0085 / zoom;
+    if (!G) camera.position.copy(overview.pos);
+    const NN = L * NPL, neuronPos = new Float32Array(NN * 3), home = [], hubPos = new Float32Array(L * 4 * 3), corePts = [];
+    for (let i = 0; i < L; i++) {
+      const a = i / L * Math.PI * 2 + Math.PI / 2, c = new THREE.Vector3(Math.cos(a) * R, 0, Math.sin(a) * R), rh = c.clone().normalize(), th = new THREE.Vector3(-rh.z, 0, rh.x);
+      const hubs = [c.clone().addScaledVector(rh, -7).add(new THREE.Vector3(0, 2.6, 0)), c.clone().addScaledVector(rh, -7).add(new THREE.Vector3(0, -2.6, 0)),
+                    c.clone().addScaledVector(th, 7.2), c.clone().addScaledVector(th, -7.2)];
+      hubs.forEach((h, k) => hubPos.set([h.x, h.y, h.z], (i * 4 + k) * 3));
+      corePts.push(rh.clone().multiplyScalar(6.2));
+      for (let k = 0; k < NPL; k++) { const u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1), r = Math.cbrt(Math.random());
+        home.push({ lobe: i, off: new THREE.Vector3(Math.sin(v) * Math.cos(u) * 5.4 * r, Math.cos(v) * 3.6 * r, Math.sin(v) * Math.sin(u) * 5.4 * r),
+          ph: Math.random() * 6.28, f: 0.4 + Math.random() * 0.9, flash: 0 }); }
+      // shell with fresnel rim (red when the book is thin)
+      const sh = new THREE.Mesh(new THREE.SphereGeometry(7.4, 40, 30), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        uniforms: { uCol: { value: new THREE.Color(K.indigo) }, uI: { value: 0.35 } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
+        fragmentShader: `uniform vec3 uCol; uniform float uI; varying vec3 vN; varying vec3 vV; void main(){ float r = pow(1.0 - abs(dot(vN, vV)), 3.0); gl_FragColor = vec4(uCol * r * uI, r * uI); }` }));
+      sh.position.copy(c); sh.userData.coin = list[i]; scene.add(sh); objects.push(sh);
+      // hub spheres + rings
+      const hubMeshes = HUBC.map((col, k) => { const m = new THREE.Mesh(new THREE.SphereGeometry(k < 2 ? 0.75 : 0.6, 20, 16), new THREE.MeshBasicMaterial({ color: col }));
+        m.position.copy(hubs[k]); scene.add(m); objects.push(m);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.28, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+        ring.position.copy(hubs[k]); scene.add(ring); objects.push(ring); return { m, ring, base: k < 2 ? 1 : 0.85 }; });
+      // label
+      const el = document.createElement("div"); el.className = "lbl"; el.dataset.c = list[i];
+      el.innerHTML = `<b>${esc(list[i])}</b><span class="px">—</span><div class="call">—</div><div class="sb"><span>L</span><i><u style="width:0;background:${K.green}"></u></i><span>S</span><i><u style="width:0;background:${K.rose}"></u></i></div>`;
+      el.addEventListener("click", () => { select(list[i]); focusLobe(list[i]); });
+      const label = new CSS2DObject(el); label.position.copy(c).add(new THREE.Vector3(0, 9.2, 0)); scene.add(label); objects.push(label);
+      lobes.push({ coin: list[i], c, rh, th, hubs, shell: sh, hubMeshes, label, lean: new THREE.Color(K.indigo), conv: 0, regime: "mean_reverting", toxic: 0, stress: 0, ls: 0, ss: 0,
+        agree: 0, accL: 0, accS: 0, accA: 0, el, pxEl: el.querySelector(".px"), callEl: el.querySelector(".call"), bars: el.querySelectorAll(".sb u") });
+    }
+    // neurons
+    const neurons = new THREE.InstancedMesh(new THREE.SphereGeometry(0.3, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), NN);
+    neurons.instanceMatrix.setUsage(THREE.DynamicDrawUsage); for (let i = 0; i < NN; i++) neurons.setColorAt(i, COL.neutral);
+    scene.add(neurons); objects.push(neurons);
+    // edges: each neuron to its 2 nearest (by home), hubs to 5 nearest neurons of their lobe
+    const edges = [];
+    for (let i = 0; i < L; i++) {
+      const base = i * NPL;
+      for (let a = 0; a < NPL; a++) { const da = []; for (let b = 0; b < NPL; b++) if (a !== b) da.push([home[base + a].off.distanceToSquared(home[base + b].off), b]);
+        da.sort((x, y) => x[0] - y[0]); for (const [, b] of da.slice(0, 2)) if (a < b || !da.slice(0, 2).some(([, bb]) => bb === a)) edges.push([0, base + a, 0, base + b, 0, i]); }
+      for (let k = 0; k < 4; k++) { const hp = lobes[i].hubs[k], d = []; for (let b = 0; b < NPL; b++) d.push([tmpV.copy(lobes[i].c).add(home[base + b].off).distanceToSquared(hp), b]);
+        d.sort((x, y) => x[0] - y[0]); for (const [, b] of d.slice(0, 5)) edges.push([1, i * 4 + k, 0, base + b, 1, i]); }
+    }
+    const lobeEdges = Array.from({ length: L }, () => []); edges.forEach((e, k) => lobeEdges[e[5]].push(k));
+    const bridges = []; for (let i = 0; i < L; i++) { bridges.push([1, i * 4, 2, i, 2, i]); bridges.push([1, i * 4 + 1, 2, i, 3, i]); bridges.push([1, i * 4 + 2, 1, ((i + 1) % L) * 4 + 3, 4, i]); }
+    const bonds = []; for (let i = 0; i < L; i++) bonds.push([1, i * 4, 1, i * 4 + 1, 5, i]);
+    const mkLines = (list2, opacity) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(list2.length * 6), 3).setUsage(THREE.DynamicDrawUsage));
+      g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(list2.length * 6), 3).setUsage(THREE.DynamicDrawUsage));
+      const ls = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+      scene.add(ls); objects.push(ls); return ls; };
+    const edgeLines = mkLines(edges, 0.55), bridgeLines = mkLines(bridges, 0.75), bondLines = mkLines(bonds, 1);
+    // photons
+    const PMAX = 2400, pg = new THREE.BufferGeometry(), ppos = new Float32Array(PMAX * 3).fill(9999), pcol = new Float32Array(PMAX * 3), psz = new Float32Array(PMAX);
+    pg.setAttribute("position", new THREE.BufferAttribute(ppos, 3).setUsage(THREE.DynamicDrawUsage)); pg.setAttribute("color", new THREE.BufferAttribute(pcol, 3).setUsage(THREE.DynamicDrawUsage));
+    pg.setAttribute("size", new THREE.BufferAttribute(psz, 1).setUsage(THREE.DynamicDrawUsage));
+    const photons = new THREE.Points(pg, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTex: { value: spr } },
+      vertexShader: `attribute float size; attribute vec3 color; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * (260.0 / -mv.z); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform sampler2D uTex; varying vec3 vC; void main(){ vec4 t = texture2D(uTex, gl_PointCoord); gl_FragColor = vec4(vC * t.a * 1.6, t.a); }` }));
+    photons.frustumCulled = false; scene.add(photons); objects.push(photons);
+    const pool = []; for (let i = 0; i < PMAX; i++) pool.push({ live: false });
+    // rings (pings / shockwaves)
+    const rings = []; for (let i = 0; i < 48; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+      m.visible = false; scene.add(m); objects.push(m); rings.push({ m, live: false }); }
+    G = { list, lobes, objects, neurons, home, neuronPos, hubPos, corePts, edges, lobeEdges, bridges, bonds, edgeLines, bridgeLines, bondLines, photons, pool, ppos, pcol, psz, rings, sats: new Map() };
+  }
+
+  // endpoint -> position
+  function endPos(k, i, out) {
+    if (k === 0) return out.set(G.neuronPos[i * 3], G.neuronPos[i * 3 + 1], G.neuronPos[i * 3 + 2]);
+    if (k === 1) return out.set(G.hubPos[i * 3], G.hubPos[i * 3 + 1], G.hubPos[i * 3 + 2]);
+    return out.copy(G.corePts[i]);
+  }
+  function spawn(ka, ia, kb, ib, color, { speed = 1.2, size = 1.6 } = {}) {
+    if (!G) return; const p = G.pool.find(x => !x.live); if (!p) return;
+    p.live = true; p.ka = ka; p.ia = ia; p.kb = kb; p.ib = ib; p.t = 0; p.speed = speed * (0.75 + Math.random() * 0.5); p.size = size; p.col = color;
+  }
+  const randNeuron = li => li * NPL + Math.floor(Math.random() * NPL);
+  function ring(pos, color, { maxR = 4, life = 1.1, start = 0.6, a0 = 0.9 } = {}) {
+    if (!G) return; const r = G.rings.find(x => !x.live); if (!r) return;
+    r.live = true; r.pos = pos.clone(); r.t = 0; r.life = life; r.maxR = maxR; r.start = start; r.a0 = a0; r.m.material.color.copy(color); r.m.visible = true;
+  }
+  const lobeOf = c => G?.lobes.findIndex(l => l.coin === c) ?? -1;
+
+  // public effects
+  const api = {
+    build,
+    jevPulse(c) { const i = lobeOf(c); if (i < 0) return; const l = G.lobes[i]; ring(l.hubs[0], COL.cyan, { maxR: 3.2 });
+      for (let k = 0; k < 10; k++) spawn(1, i * 4, 0, randNeuron(i), COL.cyan, { speed: 1.6, size: 1.4 }); },
+    riskPing(c, ok) { const i = lobeOf(c); if (i < 0) return; ring(G.lobes[i].hubs[2], ok ? COL.cyan : COL.down, { maxR: ok ? 4.5 : 3.5 }); },
+    claudeBurst(c, f) { const i = lobeOf(c); if (i < 0) return; ring(G.lobes[i].hubs[1], COL.purple, { maxR: 5.5, life: 1.6 });
+      for (let k = 0; k < 26; k++) setTimeout(() => spawn(2, i, 1, i * 4 + 1, COL.purple, { speed: 0.9, size: 2.0 }), k * 35); },
+    tradeOpen(p) { const i = lobeOf(p.coin); if (i < 0) return; const col = p.side > 0 ? COL.up : COL.down, jev = p.book === "jev";
+      ring(G.lobes[i].hubs[3], col, { maxR: jev ? 11 : 6, life: 1.8, a0: jev ? 1 : 0.5 }); if (jev) { bloomKick = 1; for (let k = 0; k < 40; k++) setTimeout(() => spawn(1, i * 4 + 3, 2, i, col, { speed: 0.8, size: 2.2 }), k * 20); } },
+    tradeClose(t) { const i = lobeOf(t.coin); if (i < 0) return; const col = t.pnl >= 0 ? COL.up : COL.down, jev = t.book === "jev";
+      ring(new THREE.Vector3(0, 0, 0), col, { maxR: jev ? 16 : 9, life: 2.0, a0: jev ? 1 : 0.5 }); if (jev) bloomKick = 1;
+      for (let k = 0; k < (jev ? 50 : 20); k++) setTimeout(() => spawn(2, i, 0, randNeuron(Math.floor(Math.random() * G.lobes.length)), col, { speed: 0.7, size: 1.8 }), k * 18); },
+    syncPositions(list) {
+      if (!G) return; const keep = new Set();
+      for (const p of list) { const key = `${p.book}|${p.coin}|${p.opened}`; keep.add(key); if (G.sats.has(key)) continue;
+        const i = lobeOf(p.coin); if (i < 0) continue; const col = p.book === "jev" ? (p.side > 0 ? COL.up : COL.down) : new THREE.Color("#64748b");
+        const m = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.16, 10, 40), new THREE.MeshBasicMaterial({ color: col }));
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 10), new THREE.MeshBasicMaterial({ color: col })); m.add(dot);
+        scene.add(m); G.objects.push(m); G.sats.set(key, { m, lobe: i, ang: Math.random() * 6.28, r: p.book === "jev" ? 9.5 : 8.6, tilt: p.book === "jev" ? 0.5 : -0.4 }); }
+      for (const [key, s] of G.sats) if (!keep.has(key)) { s.dying = s.dying || 0.0001; }
+    },
+    shock() { ring(new THREE.Vector3(), COL.cyan, { maxR: 30, life: 2.4 }); bloomKick = 1; },
+  };
+
+  // focus / picking
+  const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  let focusT = null, overview = { pos: camera.position.clone(), target: new THREE.Vector3() };
+  function focusLobe(c) { const i = lobeOf(c); if (i < 0) return; const l = G.lobes[i];
+    focusT = { t0: performance.now(), fromP: camera.position.clone(), fromT: controls.target.clone(), toT: l.c.clone(), toP: l.c.clone().addScaledVector(l.rh, 24).add(new THREE.Vector3(0, 10, 0)) };
+    controls.autoRotate = false; renderSpin(); }
+  function overviewView() { focusT = { t0: performance.now(), fromP: camera.position.clone(), fromT: controls.target.clone(), toT: overview.target.clone(), toP: overview.pos.clone() }; }
+  canvas.addEventListener("click", e => { if (!G) return; const r = canvas.getBoundingClientRect(); ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ptr, camera); const hit = ray.intersectObjects(G.lobes.map(l => l.shell))[0]; if (hit) { select(hit.object.userData.coin); focusLobe(hit.object.userData.coin); } });
+  $("bOverview").onclick = () => overviewView();
+  const renderSpin = () => { $("bSpin").textContent = controls.autoRotate ? "Auto-rotate on" : "Auto-rotate off"; $("bSpin").classList.toggle("on", controls.autoRotate); };
+  $("bSpin").onclick = () => { controls.autoRotate = !controls.autoRotate; renderSpin(); }; renderSpin();
+  window.addEventListener("keydown", e => { if (e.key === "Escape") overviewView(); });
+
+  function resize() { const r = stage.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height);
+    renderer.setSize(w, h, false); composer.setSize(w, h); labelR.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(stage); resize();
+
+  // ---- per-frame update
+  let tickEMA = 0;
+  function frame(dt, t) {
+    if (!G) { composer.render(); labelR.render(scene, camera); return; }
+    const L = G.lobes.length;
+    // read signals into lobe state (eased)
+    let sumLean = 0, convSum = 0;
+    for (let i = 0; i < L; i++) {
+      const l = G.lobes[i], m = S?.markets?.[l.coin], d = m?.decision, a = d?.answers, p = dirProbs(m);
+      leanColor(p, tmpC); l.lean.lerp(tmpC, 1 - Math.exp(-dt * 3));
+      const probs = p ? [p.up || 0, p.down || 0, p.neutral || 0].sort((x, y) => y - x) : [0, 0, 0];
+      l.conv += ((probs[0] - probs[1]) - l.conv) * (1 - Math.exp(-dt * 2));
+      l.regime = a?.regime?.choice || l.regime;
+      l.toxic += ((a?.toxic_flow?.p ?? 0) - l.toxic) * (1 - Math.exp(-dt * 2));
+      l.stress += ((a?.liquidity_stressed?.p ?? 0) - l.stress) * (1 - Math.exp(-dt * 2));
+      l.ls += ((sup(a?.long_setup) ?? 0) - l.ls) * (1 - Math.exp(-dt * 2)); l.ss += ((sup(a?.short_setup) ?? 0) - l.ss) * (1 - Math.exp(-dt * 2));
+      const f = C?.latest?.[l.coin]; let agree = 0;
+      if (p && f?.probs) { const jl = (p.up || 0) - (p.down || 0), cl = (f.probs.up || 0) - (f.probs.down || 0); agree = Math.sign(jl) === Math.sign(cl) ? Math.min(1, Math.abs(jl) + Math.abs(cl)) : 0; }
+      l.agree += (agree - l.agree) * (1 - Math.exp(-dt * 1.5));
+      sumLean += p ? (p.up || 0) - (p.down || 0) : 0; convSum += l.conv;
+      // shell: rim tint = lean, red when the book is thin
+      tmpC.copy(l.lean).lerp(COL.down, Math.min(1, l.stress * 0.9)); l.shell.material.uniforms.uCol.value.copy(tmpC);
+      l.shell.material.uniforms.uI.value = 0.12 + 0.45 * l.stress + 0.18 * l.conv + 0.06 * Math.sin(t * 2 + i);
+      // hub ring orientation + pulse
+      l.hubMeshes.forEach((h, k) => { h.ring.lookAt(camera.position); const s = h.base * (1 + 0.12 * Math.sin(t * 3 + k + i)); h.ring.scale.setScalar(s * (k === 1 ? 1 + 0.6 * (f ? Math.max(0, 1 - (nowS() - f.ts) / 30) : 0) : 1)); });
+      // continuous flows: long setup (green, inward), short setup (rose, outward), ambient conviction sparks, tick sparks
+      l.accL += dt * 7 * l.ls * l.ls; while (l.accL > 1) { l.accL -= 1; spawn(0, randNeuron(i), 2, i, COL.up, { speed: 0.55, size: 1.5 }); }
+      l.accS += dt * 7 * l.ss * l.ss; while (l.accS > 1) { l.accS -= 1; spawn(2, i, 0, randNeuron(i), COL.down, { speed: 0.55, size: 1.5 }); }
+      const le = G.lobeEdges[i], pick = () => G.edges[le[Math.floor(Math.random() * le.length)]];
+      l.accA += dt * (1.5 + 9 * l.conv); while (l.accA > 1) { l.accA -= 1; const e = pick(); spawn(e[0], e[1], e[2], e[3], l.lean, { speed: 0.9, size: 1.1 }); }
+      const st = cs(l.coin); let n = Math.min(4, st.tickQ); st.tickQ = 0; tickEMA += n;
+      while (n-- > 0) { const e = pick(); spawn(e[0], e[1], e[2], e[3], st.dir < 0 ? COL.down : COL.blue, { speed: 1.8, size: 1.3 }); }
+      // label (DOM) at 10 Hz handled elsewhere
+    }
+    tickEMA *= Math.exp(-dt * 1.2);
+    // neurons: motion style per regime, colour from lean, brightness from conviction
+    const amp = { trending: 0.35, mean_reverting: 0.2, high_vol: 0.75, crisis: 1.2 };
+    for (let n = 0; n < G.home.length; n++) {
+      const h = G.home[n], l = G.lobes[h.lobe], spread = 1 + l.stress * 0.45, a = amp[l.regime] ?? 0.3, swirl = l.regime === "trending" ? t * 0.25 : 0;
+      const cx = Math.cos(swirl), sx = Math.sin(swirl), ox = h.off.x * cx - h.off.z * sx, oz = h.off.x * sx + h.off.z * cx;
+      const x = l.c.x + ox * spread + Math.sin(t * h.f + h.ph) * a, y = l.c.y + h.off.y * spread + Math.sin(t * h.f * 0.8 + h.ph * 2) * a * 0.6, z = l.c.z + oz * spread + Math.cos(t * h.f + h.ph) * a;
+      G.neuronPos[n * 3] = x; G.neuronPos[n * 3 + 1] = y; G.neuronPos[n * 3 + 2] = z;
+      const pulseV = 0.55 + 0.45 * Math.sin(t * (1.5 + 3 * l.conv) + h.ph), s = 0.75 + 0.5 * pulseV * (0.4 + l.conv) + h.flash;
+      mtx.makeScale(s, s, s).setPosition(x, y, z); G.neurons.setMatrixAt(n, mtx);
+      tmpC.copy(l.lean).multiplyScalar(0.35 + 0.6 * pulseV * (0.35 + l.conv) + h.flash * 1.6); G.neurons.setColorAt(n, tmpC); h.flash *= Math.exp(-dt * 4);
+    }
+    G.neurons.instanceMatrix.needsUpdate = true; G.neurons.instanceColor.needsUpdate = true;
+    // edges: lobe colour, amber flicker with toxic flow
+    { const P = G.edgeLines.geometry.attributes.position.array, Cc = G.edgeLines.geometry.attributes.color.array;
+      G.edges.forEach((e, k) => { endPos(e[0], e[1], tmpV); endPos(e[2], e[3], tmpV2); P.set([tmpV.x, tmpV.y, tmpV.z, tmpV2.x, tmpV2.y, tmpV2.z], k * 6);
+        const l = G.lobes[e[5]], tox = l.toxic > 0.45 ? (l.toxic - 0.45) * 1.8 * (0.5 + 0.5 * Math.sin(t * 13 + k)) : 0;
+        tmpC.copy(e[4] === 1 ? HUBC[e[1] % 4] : l.lean).multiplyScalar(e[4] === 1 ? 0.35 : 0.22).lerp(COL.amber, Math.min(0.85, tox));
+        Cc.set([tmpC.r, tmpC.g, tmpC.b, tmpC.r, tmpC.g, tmpC.b], k * 6); });
+      G.edgeLines.geometry.attributes.position.needsUpdate = true; G.edgeLines.geometry.attributes.color.needsUpdate = true; }
+    { const P = G.bridgeLines.geometry.attributes.position.array, Cc = G.bridgeLines.geometry.attributes.color.array;
+      G.bridges.forEach((e, k) => { endPos(e[0], e[1], tmpV); endPos(e[2], e[3], tmpV2); P.set([tmpV.x, tmpV.y, tmpV.z, tmpV2.x, tmpV2.y, tmpV2.z], k * 6);
+        const col = e[4] === 2 ? COL.cyan : e[4] === 3 ? COL.purple : COL.blue; const w = e[4] === 4 ? 0.12 : 0.32;
+        Cc.set([col.r * w, col.g * w, col.b * w, col.r * w * 0.4, col.g * w * 0.4, col.b * w * 0.4], k * 6); });
+      G.bridgeLines.geometry.attributes.position.needsUpdate = true; G.bridgeLines.geometry.attributes.color.needsUpdate = true; }
+    { const P = G.bondLines.geometry.attributes.position.array, Cc = G.bondLines.geometry.attributes.color.array;
+      G.bonds.forEach((e, k) => { endPos(e[0], e[1], tmpV); endPos(e[2], e[3], tmpV2); P.set([tmpV.x, tmpV.y, tmpV.z, tmpV2.x, tmpV2.y, tmpV2.z], k * 6);
+        const w = 0.08 + 1.2 * G.lobes[e[5]].agree * (0.75 + 0.25 * Math.sin(t * 4 + k)); Cc.set([COL.cyan.r * w, COL.cyan.g * w, COL.cyan.b * w, COL.purple.r * w, COL.purple.g * w, COL.purple.b * w], k * 6); });
+      G.bondLines.geometry.attributes.position.needsUpdate = true; G.bondLines.geometry.attributes.color.needsUpdate = true; }
+    // photons
+    for (let k = 0; k < G.pool.length; k++) { const p = G.pool[k];
+      if (!p.live) { if (G.ppos[k * 3] !== 9999) { G.ppos[k * 3] = 9999; G.psz[k] = 0; } continue; }
+      p.t += dt * p.speed; if (p.t >= 1) { p.live = false; if (p.kb === 0) G.home[p.ib].flash = Math.min(1, G.home[p.ib].flash + 0.5); G.ppos[k * 3] = 9999; G.psz[k] = 0; continue; }
+      endPos(p.ka, p.ia, tmpV); endPos(p.kb, p.ib, tmpV2); tmpV.lerp(tmpV2, p.t);
+      G.ppos[k * 3] = tmpV.x; G.ppos[k * 3 + 1] = tmpV.y; G.ppos[k * 3 + 2] = tmpV.z; G.pcol[k * 3] = p.col.r; G.pcol[k * 3 + 1] = p.col.g; G.pcol[k * 3 + 2] = p.col.b;
+      G.psz[k] = p.size * (0.85 + 0.3 * Math.sin(p.t * 12)); }
+    const pa = G.photons.geometry.attributes; pa.position.needsUpdate = true; pa.color.needsUpdate = true; pa.size.needsUpdate = true;
+    // rings
+    for (const r of G.rings) { if (!r.live) continue; r.t += dt / r.life; if (r.t >= 1) { r.live = false; r.m.visible = false; continue; }
+      const e = 1 - Math.pow(1 - r.t, 3); r.m.position.copy(r.pos); r.m.lookAt(camera.position); r.m.scale.setScalar(r.start + (r.maxR - r.start) * e); r.m.material.opacity = r.a0 * (1 - r.t); }
+    // satellites (open positions)
+    for (const [key, s] of G.sats) { const l = G.lobes[s.lobe]; s.ang += dt * 0.9;
+      if (s.dying) { s.dying += dt * 1.4; s.m.position.lerp(new THREE.Vector3(0, 0, 0), Math.min(1, s.dying * 0.25)); s.m.scale.setScalar(Math.max(0.01, 1 - s.dying)); if (s.dying >= 1) { scene.remove(s.m); G.sats.delete(key); } continue; }
+      s.m.position.set(l.c.x + Math.cos(s.ang) * s.r, l.c.y + Math.sin(s.ang * 1.3) * s.tilt * 4, l.c.z + Math.sin(s.ang) * s.r); s.m.rotation.x += dt * 1.5; s.m.rotation.y += dt * 2; }
+    // core: colour = average lean, heartbeat = tick rate + conviction
+    const meanLean = L ? sumLean / L : 0, meanConv = L ? convSum / L : 0;
+    tmpC.copy(COL.cyan).lerp(meanLean >= 0 ? COL.up : COL.down, Math.min(1, Math.abs(meanLean) * 1.4)); coreUni.uColA.value.lerp(tmpC, 1 - Math.exp(-dt * 2));
+    coreUni.uTime.value += dt * (0.6 + Math.min(2, tickEMA / 25)); coreUni.uAmp.value = 0.35 + Math.min(0.9, tickEMA / 40) + 0.5 * meanConv;
+    const beat = 1 + 0.035 * Math.sin(t * (2.2 + meanConv * 3)); core.scale.setScalar(beat);
+    shell.rotation.y += dt * 0.12; shell.rotation.x += dt * 0.05; brain.rotation.y -= dt * 0.04;
+    // bloom kick on trades
+    bloomKick = Math.max(0, bloomKick - dt * 1.2); bloom.strength = BLOOM + bloomKick * 1.0;
+    // camera focus tween
+    if (focusT) { const k = Math.min(1, (performance.now() - focusT.t0) / 1200), e = 1 - Math.pow(1 - k, 3);   // wall-clock, frame-rate independent
+      camera.position.lerpVectors(focusT.fromP, focusT.toP, e); controls.target.lerpVectors(focusT.fromT, focusT.toT, e); if (k >= 1) focusT = null; }
+    controls.update(dt); composer.render(); labelR.render(scene, camera);
+  }
+  api.frame = frame; api.focusLobe = focusLobe;
+  window.__cortex = { camera, controls, get focus() { return focusT; } };   // read-only debugging handle
+  api.renderLabels = () => { if (!G) return; for (const l of G.lobes) { const st = cs(l.coin), m = S?.markets?.[l.coin], p = dirProbs(m), f = C?.latest?.[l.coin], a = m?.decision?.answers;
+    setText(l.pxEl, fp(st.disp)); l.pxEl.style.color = st.dir < 0 ? K.down : st.dir > 0 ? K.up : K.text2;
+    const jc = p ? ((p.up || 0) >= (p.down || 0) ? (p.up >= (p.neutral || 0) ? `<span class="up">▲${pct(p.up)}</span>` : `● ${pct(p.neutral)}`) : (p.down >= (p.neutral || 0) ? `<span class="down">▼${pct(p.down)}</span>` : `● ${pct(p.neutral)}`)) : "—";
+    const cc = f?.probs ? (f.choice === "up" ? `<span class="up">▲${pct(f.probs.up)}</span>` : f.choice === "down" ? `<span class="down">▼${pct(f.probs.down)}</span>` : `● ${pct(f.probs.neutral)}`) : "—";
+    const html = `<span style="color:${K.cyan}">JEV</span> ${jc} · <span style="color:${K.purple}">CL</span> ${cc}`; if (l.callEl._h !== html) { l.callEl.innerHTML = html; l.callEl._h = html; }
+    l.bars[0].style.width = Math.round((sup(a?.long_setup) ?? 0) * 100) + "%"; l.bars[1].style.width = Math.round((sup(a?.short_setup) ?? 0) * 100) + "%";
+    l.el.classList.toggle("sel", l.coin === sel); } };
+  return api;
+}
+
+/* ===================================================================== side panels, watchlist, mini chart */
+function buildRows() {
+  $("rows").innerHTML = coins.map(c => `<div class="row${c === sel ? " sel" : ""}" data-c="${esc(c)}"><div class="top"><span>${esc(c)}</span><span class="p">—</span></div><canvas></canvas><div class="calls"></div></div>`).join("");
+  document.querySelectorAll(".row").forEach(r => r.onclick = () => { select(r.dataset.c); world?.focusLobe(r.dataset.c); });
+}
+function select(c) { sel = c; document.querySelectorAll(".row").forEach(r => r.classList.toggle("sel", r.dataset.c === c)); mini.ylo = null; renderHourly(); renderHip4(); }
+document.addEventListener("keydown", e => { const n = parseInt(e.key, 10); if (n >= 1 && n <= coins.length) { select(coins[n - 1]); world?.focusLobe(coins[n - 1]); } });
+function fit2d(cv) { const r = cv.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); } const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return { g, W: w, H: h }; }
+function series(c, now, span) { const st = cs(c), m = S?.markets?.[c], out = [], L = st.live, start = L.length ? L[0][0] : Infinity;
+  if (m?.mids?.v) { const { t0, dt, v } = m.mids; for (let i = 0; i < v.length; i++) { const t = t0 + i * dt; if (t < start && now - t <= span) out.push([t, v[i]]); } }
+  for (const p of L) if (now - p[0] <= span) out.push(p); return out; }
+function drawSpark(cv, c, now) { const { g, W, H } = fit2d(cv); g.clearRect(0, 0, W, H); const pts = series(c, now, 300); const st = cs(c); if (st.disp != null) pts.push([now, st.disp]); if (pts.length < 2) return;
+  let lo = Infinity, hi = -Infinity; for (const p of pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); } if (hi - lo < 1e-12) { hi += 1e-9; lo -= 1e-9; }
+  const x = t => (t - (now - 300)) / 300 * W, y = v => 2 + (hi - v) / (hi - lo) * (H - 4), upish = pts[pts.length - 1][1] >= pts[0][1];
+  g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(x(p[0]), y(p[1])) : g.moveTo(x(p[0]), y(p[1]))); g.strokeStyle = upish ? K.up : K.down; g.lineWidth = 1.2; g.shadowColor = g.strokeStyle; g.shadowBlur = 6; g.stroke(); g.shadowBlur = 0; }
+const mini = { ylo: null, yhi: null };
+function drawMini(dt, now) {
+  const { g, W, H } = fit2d($("mini")); g.clearRect(0, 0, W, H);
+  const c = sel, st = cs(c), m = S?.markets?.[c]; if (!c || st.disp == null) return;
+  const PAST = 300, AX = 62, plotW = W - AX, xNow = plotW * 0.62, top = 8, bot = H - 18, ph = bot - top, mid = st.disp;
+  const pts = series(c, now, PAST); pts.push([now, mid]);
+  const sigma = m?.state?.typical_move_bps || 0, band = m?.state?.neutral_band_bps || 0, dir = dirProbs(m), cf = C?.latest?.[c], pos = (S?.books?.jev?.positions || []).find(p => p.coin === c);
+  const xAt = t => t <= now ? xNow - (now - t) / PAST * xNow : xNow + (t - now) / horizon * (plotW - xNow);
+  let lo = Infinity, hi = -Infinity; for (const p of pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+  if (sigma) { lo = Math.min(lo, mid * (1 - sigma / 1e4)); hi = Math.max(hi, mid * (1 + sigma / 1e4)); }
+  if (cf && now - cf.ts < horizon + 5) { lo = Math.min(lo, cf.mid0 * (1 + cf.low_bps / 1e4)); hi = Math.max(hi, cf.mid0 * (1 + cf.high_bps / 1e4)); }
+  if (pos) for (const v of [pos.stop, pos.target]) if (v) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const sp = (hi - lo) || mid * 0.001; lo -= sp * 0.08; hi += sp * 0.08; const k = 1 - Math.exp(-dt * 6);
+  mini.ylo = mini.ylo == null ? lo : mini.ylo + (lo - mini.ylo) * k; mini.yhi = mini.yhi == null ? hi : mini.yhi + (hi - mini.yhi) * k;
+  const y = v => top + (mini.yhi - v) / (mini.yhi - mini.ylo) * ph;
+  g.font = "10px " + K.mono; g.textBaseline = "middle";
+  for (let i = 0; i <= 3; i++) { const v = mini.ylo + (mini.yhi - mini.ylo) * i / 3, yy = Math.round(y(v)) + .5; g.strokeStyle = "rgba(56,189,248,.07)"; g.beginPath(); g.moveTo(0, yy); g.lineTo(plotW, yy); g.stroke(); g.fillStyle = K.muted; g.textAlign = "left"; g.fillText(fp(v), plotW + 6, yy); }
+  g.fillStyle = "rgba(34,211,238,.03)"; g.fillRect(xNow, top, plotW - xNow, ph);
+  if (pos) { for (const [v, col, lbl] of [[pos.entry, "rgba(226,232,240,.5)", (pos.side > 0 ? "LONG" : "SHORT")], [pos.stop, "rgba(244,63,94,.75)", "STOP"], [pos.target, "rgba(52,211,153,.75)", "TARGET"]]) { if (!v) continue;
+    const yy = Math.round(y(v)) + .5; g.setLineDash([4, 4]); g.strokeStyle = col; g.beginPath(); g.moveTo(0, yy); g.lineTo(plotW, yy); g.stroke(); g.setLineDash([]); g.fillStyle = col; g.textAlign = "left"; g.fillText(lbl, 4, yy - 7); } }
+  if (sigma && dir) { const lean = ((dir.up || 0) - (dir.down || 0)) * sigma, N = 20, up = [], dn = [];
+    for (let i = 0; i <= N; i++) { const f = i / N, x = xNow + f * (plotW - xNow), c0 = mid * (1 + lean * f / 1e4), w = mid * sigma * Math.sqrt(f) / 1e4; up.push([x, y(c0 + w)]); dn.push([x, y(c0 - w)]); }
+    g.beginPath(); up.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); for (let i = N; i >= 0; i--) g.lineTo(dn[i][0], dn[i][1]); g.closePath(); g.fillStyle = "rgba(34,211,238,.14)"; g.fill();
+    if (band) { g.setLineDash([2, 4]); g.strokeStyle = "rgba(148,163,184,.35)"; for (const s of [1, -1]) { const yy = y(mid * (1 + s * band / 1e4)); g.beginPath(); g.moveTo(xNow, yy); g.lineTo(plotW, yy); g.stroke(); } g.setLineDash([]); }
+    g.setLineDash([1, 4]); g.lineCap = "round"; g.lineWidth = 2; g.strokeStyle = K.cyan; g.beginPath(); g.moveTo(xNow, y(mid)); g.lineTo(plotW, y(mid * (1 + lean / 1e4))); g.stroke(); g.setLineDash([]); g.lineCap = "butt"; g.lineWidth = 1; }
+  const cone = (f, faded) => { const x0 = xAt(f.ts), x1 = xAt(f.ts + horizon), y0 = y(f.mid0); g.globalAlpha = faded ? .35 : 1;
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y(f.mid0 * (1 + f.high_bps / 1e4))); g.lineTo(x1, y(f.mid0 * (1 + f.low_bps / 1e4))); g.closePath(); g.fillStyle = "rgba(168,85,247,.13)"; g.fill();
+    g.setLineDash([6, 4]); g.strokeStyle = K.purple; g.lineWidth = faded ? 1 : 1.8; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y(f.mid0 * (1 + f.expected_bps / 1e4))); g.stroke(); g.setLineDash([]); g.lineWidth = 1;
+    if (faded && f.outcome) { g.font = "700 11px " + K.mono; g.textAlign = "center"; g.fillStyle = f.correct ? K.up : K.down; g.fillText(f.correct ? "✓" : "✗", x1, y(f.mid0 * (1 + f.actual_bps / 1e4)) - 9); } g.globalAlpha = 1; };
+  for (const h of (C?.history || []).filter(h => h.coin === c && now - (h.ts + horizon) < PAST).slice(-4)) cone(h, true);
+  if (cf && now - cf.ts < horizon + 5) cone(cf, false);
+  g.save(); g.beginPath(); g.rect(0, 0, xNow + 1, H); g.clip(); g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(xAt(p[0]), y(p[1])) : g.moveTo(xAt(p[0]), y(p[1])));
+  g.strokeStyle = "#e2e8f0"; g.lineWidth = 1.5; g.shadowColor = "rgba(56,189,248,.6)"; g.shadowBlur = 8; g.stroke(); g.restore();
+  const yN = y(mid), dc = st.dir < 0 ? K.down : K.up; g.fillStyle = dc; g.beginPath(); g.arc(xNow, yN, 3, 0, Math.PI * 2); g.fill();
+  g.fillStyle = dc; g.fillRect(plotW + 2, yN - 9, AX - 4, 18); g.fillStyle = "#030712"; g.font = "700 10px " + K.mono; g.textAlign = "left"; g.fillText(fp(mid), plotW + 6, yN + .5);
+  g.fillStyle = K.muted; g.font = "9.5px " + K.mono; g.textAlign = "center"; g.fillText("−5m", 14, H - 7); g.fillText("now", xNow, H - 7); g.fillText("+" + Math.round(horizon / 60) + "m", plotW - 12, H - 7);
+}
+function probBars(el, p) { if (!p) { el.innerHTML = `<div class="line">no answer yet</div>`; return; }
+  el.innerHTML = [["Up", "up", K.up], ["Neutral", "neutral", K.indigo], ["Down", "down", K.down]].map(([lbl, k, c]) => `<div class="prob"><span>${lbl}</span><span class="tr"><i style="width:${Math.round((p[k] || 0) * 100)}%;background:${c};--g:${c}"></i></span><span class="v">${pct(p[k] || 0)}</span></div>`).join(""); }
+function renderPanels() {
+  const c = sel, st = cs(c), m = S?.markets?.[c], d = m?.decision, now = nowS();
+  setText($("selName"), (c || "—") + "-PERP"); setText($("bigPx"), fp(st.disp)); $("bigPx").style.color = st.dir < 0 ? K.down : st.dir > 0 ? K.up : K.text;
+  if (m) $("selMeta").innerHTML = `24h <b class="${(m.change_24h_pct || 0) >= 0 ? "up" : "down"}">${m.change_24h_pct != null ? (m.change_24h_pct >= 0 ? "+" : "") + m.change_24h_pct.toFixed(2) + "%" : "—"}</b> · spread <b>${m.spread_bps != null ? m.spread_bps.toFixed(2) : "—"}</b> bps · band <b>±${m.state?.neutral_band_bps ?? "—"}</b> bps`;
+  setText($("miniT"), (c || "—") + " · LIVE PRICE + FORECASTS"); setText($("hz"), Math.round(horizon / 60) + " min"); setText($("sigAge"), d?.ts ? "jev " + ago(d.ts) + " ago" : "");
+  probBars($("jProbs"), dirProbs(m)); const rg = d?.answers?.regime; setText($("jRegime"), rg ? "· " + rg.choice.replace("_", " ") + " " + pct(rg.p) : "");
+  const v2 = S?.signal?.mode, sg2 = m?.signal;
+  if (v2) {   // Jev v2: Jev classifies the present stretch, code maps the class to P(up); the setup scores are not used
+    const ep = S.signal.entry_prob;
+    $("jSetup").innerHTML = !sg2 ? `<div class="line">Jev v2 warming up</div>` : sg2.status !== "ok" ? `<div class="line">Jev v2: ${esc(sg2.status)}${sg2.error ? " · " + esc(sg2.error) : ""}</div>` :
+      `<div class="line" style="margin:0">Jev v2 says <b>${esc(sg2.class || "—")}</b> <span class="t2">(${pct(sg2.class_p)} sure)</span></div>` +
+      `<div class="line" style="font-size:10.5px;margin-top:2px">move ${sg2.move_sigmas != null ? (sg2.move_sigmas >= 0 ? "+" : "") + sg2.move_sigmas.toFixed(2) + "σ" : "—"} over ${sg2.horizon_min} min · signal ${ago(sg2.made)} ago</div>`;
+    $("jEdge").innerHTML = sg2?.status === "ok" ? `P(up ${sg2.horizon_min}m) <b class="${sg2.p_up >= .5 ? "up" : "down"}">${(sg2.p_up * 100).toFixed(1)}%</b> · enters long ≥ ${pct(ep)}, short ≤ ${pct(1 - ep)}` : "";
+  } else {
+    const ls = sup(d?.answers?.long_setup), ss = sup(d?.answers?.short_setup), need = S?.config?.policy?.min_setup_prob;
+    $("jSetup").innerHTML = ls == null ? "" : [["Long", ls, K.up], ["Short", ss, K.down]].map(([lbl, v, col]) => `<div class="prob"><span>${lbl}</span><span class="tr"><i style="width:${Math.round(v * 100)}%;background:${col};--g:${col}"></i>${need != null ? `<b style="left:${need * 100}%"></b>` : ""}</span><span class="v">${pct(v)}</span></div>`).join("") + `<div class="line" style="font-size:10.5px;margin-top:2px">setup = chance it's Supported or Strong · bar ${need != null ? pct(need) : "—"}</div>`;
+    const dp = dirProbs(m), sig = m?.state?.typical_move_bps;
+    if (dp && sig) { const eL = ((dp.up || 0) - (dp.down || 0)) * 1.14 * sig, best = eL >= -eL ? ["LONG", eL] : ["SHORT", -eL]; $("jEdge").innerHTML = `expected edge <b class="${best[0] === "LONG" ? "up" : "down"}">${best[0]} ${sbps(best[1])}</b> · needs ${S?.config?.policy?.min_edge_bps ?? "—"} bps`; } else $("jEdge").textContent = "";
+  }
+  setText($("scH"), Math.round(horizon / 60) + "-min calls");
+  setText($("miniR"), `next ${Math.round(horizon / 60)} min · Jev fan · Claude cone`);
+  const a = d?.jev_action; $("jAct").innerHTML = a ? `<b class="${a.kind.includes("LONG") ? "up" : a.kind.includes("SHORT") ? "down" : ""}">${esc(a.kind.replace("_", " "))}</b> · ${esc(a.reasons?.[0] || "")}` : "—";
+  const f = C?.latest?.[c]; probBars($("cProbs"), f?.probs); setText($("cAge"), f ? "· " + ago(f.ts) + " ago" : "");
+  $("cExp").innerHTML = f ? `expected <b>${sbps(f.expected_bps)}</b> · 80% range ${sbps(f.low_bps)} to ${sbps(f.high_bps)}` : (C?.status ? `status: ${esc(C.status)}` : "—"); setText($("cWhy"), f?.reason || "");
+  renderSizing(); renderRegime();
+  const pos = (S?.books?.jev?.positions || []).find(p => p.coin === c), rest = (S?.books?.jev?.pending || []).find(p => p.coin === c);
+  $("pos").innerHTML = pos ? `<span>Side</span><b><span class="badge ${pos.side > 0 ? "long" : "short"}">${pos.side > 0 ? "LONG" : "SHORT"}</span></b><span>Entry</span><b>${fp(pos.entry)}</b><span>Stop / target</span><b>${fp(pos.stop)} / ${fp(pos.target)}</b><span>Unrealized</span><b class="${pos.upnl >= 0 ? "up" : "down"}">${usd(pos.upnl)} (${sbps(pos.upnl_bps)})</b><span>Since signal</span><b>${Math.round(pos.age_s ?? pos.hold_s)}s / ${Math.round((S?.config?.risk?.max_hold_s || 0) / 60)}m</b>`
+    : rest ? `<span>Resting</span><b><span class="badge ${rest.side > 0 ? "long" : "short"}">${rest.side > 0 ? "BID" : "OFFER"}</span> ${fp(rest.price)}</b><span>Size</span><b>$${rest.notional.toFixed(0)}</b><span>Fills if</span><b class="t2">price trades through it · ${Math.round(rest.ttl_s)}s left</b>`
+    : `<span>Flat</span><b class="t2">no open position</b>`;
+  const sb = C?.scoreboard || {}; for (const [id, x] of [["J", sb.jev], ["C", sb.claude]]) { const v = x?.dir_right_when_moved; setText($("sc" + id), v != null ? pct(v) : "—"); $("sc" + id).className = "n " + (v == null ? "" : v >= .5 ? "up" : "down"); setText($("sc" + id + "s"), x?.moved_n ? `n=${x.moved_n} · ${sbps(x.avg_move_called_dir_bps)}` : "no scored calls yet"); }
+  const B = S?.books || {}; $("books").innerHTML = [["Jev", B.jev], ["Baseline", B.baseline]].map(([n, b]) => b ? `<span>${n} P&amp;L</span><b class="${b.pnl >= 0 ? "up" : "down"}">${usd(b.pnl)}</b><span class="muted">${n} trades / win</span><b class="t2">${b.trades} / ${b.win_rate != null ? pct(b.win_rate / 100) : "—"}</b>` : "").join("")
+    + (S?.config?.entry_mode === "maker" && B.jev?.maker ? `<span class="muted">Jev maker fills</span><b class="t2">${B.jev.maker.filled}/${B.jev.maker.placed} · ${B.jev.maker.expired} expired</b>` : "");
+  document.querySelectorAll(".row").forEach((r, i) => { const cc = r.dataset.c, s2 = cs(cc), mm = S?.markets?.[cc], pe = r.querySelector(".p"); setText(pe, fp(s2.disp)); pe.style.color = s2.dir < 0 ? K.down : s2.dir > 0 ? K.up : K.text;
+    const chip = (cls, who, p) => { if (!p) return `<span class="chip ${cls}">${who} —</span>`; const k = ["up", "down", "neutral"].reduce((x, y) => (p[y] || 0) > (p[x] || 0) ? y : x, "up");
+      return `<span class="chip ${cls}">${who} <span class="${k === "up" ? "up" : k === "down" ? "down" : "t2"}">${k === "up" ? "▲" : k === "down" ? "▼" : "●"} ${pct(p[k])}</span></span>`; };
+    const h = chip("j", "J", dirProbs(mm)) + chip("c", "C", C?.latest?.[cc]?.probs); const ce = r.querySelector(".calls"); if (ce._h !== h) { ce.innerHTML = h; ce._h = h; }
+    drawSpark(r.querySelector("canvas"), cc, nowS()); });
+}
+function renderStatus() {
+  const now = nowS(); wsTimes = wsTimes.filter(t => now - t <= 5);
+  setStatus("sFeed", wsOk ? "ok" : "bad", wsOk ? `STREAM ${(wsTimes.length / 5).toFixed(0)}/s` : "STREAM RECONNECTING");
+  const j = S?.jev; if (j) setStatus("sJev", j.status === "ok" ? "ok" : "warn", `JEV ${j.p50_ms ? Math.round(j.p50_ms) + "ms" : (j.status || "").toUpperCase()} · $${(j.cost_day || 0).toFixed(2)}`);
+  if (C) setStatus("sClaude", C.status === "ok" || C.status === "forecasting" ? "ok" : C.status === "waiting" ? "warn" : "bad", `CLAUDE ${C.status === "ok" ? (C.last_run ? ago(C.last_run) : "") : String(C.status || "").toUpperCase()} · $${(C.cost_day || 0).toFixed(2)}`);
+  const paper = (S?.mode || "paper") === "paper"; $("bReset").hidden = !paper; setText($("modeTag"), paper ? "PAPER" : String(S?.mode || "").toUpperCase());
+  setText($("clock"), new Date().toISOString().slice(11, 19) + " UTC");
+}
+
+/* ===================================================================== main loop */
+try { world = makeWorld(); } catch (e) { $("nogl").hidden = false; $("nogl").textContent = "3D needs WebGL, which isn't available in this browser. The panels still update live. (" + e.message + ")"; }
+let last = performance.now(), fN = 0, fT = performance.now(), domT = 0;
+function loop(t) {
+  const dt = Math.min(0.1, (t - last) / 1000); last = t;
+  fN++; if (t - fT >= 500) { setText($("fps"), Math.round(fN * 1000 / (t - fT)) + " fps"); fN = 0; fT = t; }
+  for (const c of coins) { const st = cs(c); if (st.target != null) st.disp = st.disp == null ? st.target : st.disp + (st.target - st.disp) * (1 - Math.exp(-dt * 14)); }
+  try { world?.frame(dt, t / 1000); } catch (e) { console.error(e); }
+  drawMini(dt, nowS());
+  if (t - domT > 100) { domT = t; renderPanels(); renderLog(); world?.renderLabels(); }
+  requestAnimationFrame(loop);
+}
+pollState().then(() => { connect(); requestAnimationFrame(loop); });
+setInterval(pollState, 1000); pollClaude(); setInterval(pollClaude, 3000); pollHourly(); setInterval(pollHourly, 15000);
+pollHip4(); setInterval(pollHip4, 15000); pollMM(); setInterval(pollMM, 2000); pollWeekly(); setInterval(pollWeekly, 60000);
+setInterval(renderStatus, 500); renderStatus(); renderSoundBtn(); if (Sound.pref) $("bSound").textContent = "♪ Click to enable";
+logEv("INFO", "Cortex online · Jev, Claude, risk and trades wired in");
+</script>
