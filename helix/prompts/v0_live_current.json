@@ -1,0 +1,55 @@
+{
+ "name": "v0_live_current",
+ "theory": "Control: the battery Helix uses live today (direction as up/down/neutral against a neutral band, plus regime and long/short setup scores), adapted only where the live state has order-book fields the replay cannot rebuild; the hourly question exactly as the live hourly test asks it.",
+ "blocks_direction": [],
+ "direction": {
+  "type": "choice",
+  "instructions": "Where will the price be {H} minutes from now, compared with now? `neutral_band_{H}m_bps` is the threshold; `expected_move_{H}m_bps` is the usual size of a move over that time.",
+  "criteria": {
+   "up": "The price ends more than `neutral_band_{H}m_bps` above where it is now",
+   "down": "The price ends more than `neutral_band_{H}m_bps` below where it is now",
+   "neutral": "The price ends within `neutral_band_{H}m_bps` of where it is now"
+  },
+  "up_key": "up",
+  "down_key": "down"
+ },
+ "extras_direction": {
+  "regime": {
+   "type": "choice",
+   "instructions": "Which regime describes this market right now, judging by the returns and volatility in the state",
+   "criteria": {
+    "trending": "Returns over 5 to 60 minutes point the same way and price keeps extending in that direction",
+    "mean_reverting": "Price oscillates around a stable level; short moves keep reversing",
+    "high_vol": "Large moves both ways; `vol_ratio_15m_vs_4h` well above 1",
+    "crisis": "Disorderly: violent moves with `vol_ratio_15m_vs_4h` far above 1"
+   }
+  },
+  "long_setup": {
+   "type": "score",
+   "instructions": "How favourable is opening a LONG right now, a bet that price rises over the next 15 minutes",
+   "criteria": [
+    "Against: price is falling and the recent bars are mostly down",
+    "Weak: mixed signals; nothing in the trend, bars or volume supports a rise",
+    "Supported: short-term trend, bars and volume lean towards a rise",
+    "Strong: trend, bars and volume all clearly point up"
+   ]
+  },
+  "short_setup": {
+   "type": "score",
+   "instructions": "How favourable is opening a SHORT right now, a bet that price falls over the next 15 minutes",
+   "criteria": [
+    "Against: price is rising and the recent bars are mostly up",
+    "Weak: mixed signals; nothing in the trend, bars or volume supports a fall",
+    "Supported: short-term trend, bars and volume lean towards a fall",
+    "Strong: trend, bars and volume all clearly point down"
+   ]
+  }
+ },
+ "blocks_above": [],
+ "above": {
+  "type": "noul",
+  "instructions": "When `minutes_to_expiry` minutes have passed, will the price be above `strike_{S}`?",
+  "criteria": {"true": "The price ends above `strike_{S}`", "false": "The price ends at or below `strike_{S}`"}
+ },
+ "extras_above": {}
+}

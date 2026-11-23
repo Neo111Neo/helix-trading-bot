@@ -1,0 +1,172 @@
+{
+ "name": "calibrated_anchor_bounded_score",
+ "theory": "Jev sorts situations into categories. It is not a forecaster or a calculator. Asked to call a near coin flip, it repeats the most salient number (trailing momentum) with high confidence. So every decoded question asks \"which description of the evidence fits this state\". The measured base rates, the empirical baseline and Claude's independent number go in the state as the explicit default, \"no usable edge\" is described as the usual case, and Jev may move off the middle only for named, observable signs. Score levels with decoded values close to the honest prior make even a confident answer move the probability only a few points. The rest of the judgment goes into signed, present-tense descriptive extras that the stacked model can weight or ignore.",
+ "blocks_direction": [
+  "stats",
+  "anchor",
+  "claude"
+ ],
+ "direction": {
+  "type": "score",
+  "instructions": "Which description best fits the evidence in this state about whether the price will be HIGHER {H} minutes from now than it is right now? Over {H} minutes crypto prices are close to a coin flip. The honest starting point is `baseline_p_up_{H}m`, a measured probability built from how often this coin's past moves continued or reversed over the last 7 days (`continuation_rate_5m_7d`, `continuation_rate_15m_7d`: 0.5 means no momentum, below 0.5 means moves tended to reverse). `claude_p_up_{H}m` is an independent second opinion. A recent rise or fall (`return_5m_bps`, `return_15m_bps`) is already counted in those numbers and is not by itself a reason to expect more of the same. Lean away from the middle only for concrete signs you can point to in the state.",
+  "criteria": [
+   "Clear case for lower: `baseline_p_up_{H}m` and `claude_p_up_{H}m` are both below one half, and a concrete market sign agrees, such as the perp trading rich to its oracle (`premium_bps` clearly above zero) or a recent move far larger than `expected_move_{H}m_bps` of the kind the 7-day continuation rates say tends to end lower (a big rise that usually reverses, or a big drop that usually persists).",
+   "Slight lean lower: the estimates tilt below one half, or one concrete sign points down, but the evidence is thin or partly contradicted.",
+   "No usable edge: the estimates sit close to one half, the signs conflict, or the only argument is that price has recently been moving one way. Most states look like this.",
+   "Slight lean higher: the estimates tilt above one half, or one concrete sign points up, but the evidence is thin or partly contradicted.",
+   "Clear case for higher: `baseline_p_up_{H}m` and `claude_p_up_{H}m` are both above one half, and a concrete market sign agrees, such as the perp trading cheap to its oracle (`premium_bps` clearly below zero) or a recent move far larger than `expected_move_{H}m_bps` of the kind the 7-day continuation rates say tends to end higher (a big drop that usually reverses, or a big rise that usually persists)."
+  ],
+  "level_values": [
+   0.44,
+   0.48,
+   0.5,
+   0.52,
+   0.56
+  ]
+ },
+ "extras_direction": {
+  "spike_move": {
+   "type": "score",
+   "instructions": "Has price made a sudden, outsized move in the last few minutes compared with this coin's normal one-minute movement (`vol_1m_bps`)? Look at `return_1m_bps` and `return_5m_bps`.",
+   "criteria": [
+    "A sudden sharp drop: the last few minutes fell several times further than a normal one-minute move",
+    "A quick dip clearly larger than normal",
+    "Nothing unusual: recent minutes moved about as much as normal or less",
+    "A quick pop clearly larger than normal",
+    "A sudden sharp jump: the last few minutes rose several times further than a normal one-minute move"
+   ]
+  },
+  "steady_trend": {
+   "type": "score",
+   "instructions": "Is price grinding steadily in one direction? Look at how many of the last 15 one-minute bars closed up (`up_bars_last_15`), whether `return_15m_bps` and `return_60m_bps` agree, and whether the move came gradually rather than in one jump.",
+   "criteria": [
+    "Steady grind down: most bars closed down and the 15- and 60-minute moves are both clearly negative",
+    "Mild drift down",
+    "No steady drift: choppy, mixed bars, or the move came in a single jump",
+    "Mild drift up",
+    "Steady grind up: most bars closed up and the 15- and 60-minute moves are both clearly positive"
+   ]
+  },
+  "perp_overshoot": {
+   "type": "score",
+   "instructions": "How is the perp priced against its oracle right now (`premium_bps`, with `funding_hr_bps` as the longer-running tilt), taken together with the recent move (`return_15m_bps`)?",
+   "criteria": [
+    "Perp dumped below its oracle: price just fell and the perp trades clearly cheap to the oracle",
+    "Perp somewhat cheap to its oracle",
+    "Perp roughly in line with its oracle",
+    "Perp somewhat rich to its oracle",
+    "Perp ran above its oracle: price just rose and the perp trades clearly rich to the oracle"
+   ]
+  },
+  "volume_backed_move": {
+   "type": "score",
+   "instructions": "Is the last 15 minutes' move (`return_15m_bps`) happening on unusual activity? Use trading volume against its 4-hour norm (`volume_15m_vs_4h`) and short-term volatility against its 4-hour norm (`vol_ratio_15m_vs_4h`).",
+   "criteria": [
+    "Heavy-activity selloff: price falling while volume and volatility run well above normal",
+    "Decline on ordinary or light activity",
+    "No meaningful move",
+    "Rise on ordinary or light activity",
+    "Heavy-activity rally: price rising while volume and volatility run well above normal"
+   ]
+  },
+  "stretch_extreme": {
+   "type": "score",
+   "instructions": "How stretched is price right now? Consider where it sits in its 4-hour and 24-hour ranges (`position_in_4h_range`, `position_in_24h_range`), the 1-minute RSI (`rsi14_1m`), its gap to the 20-minute average (`ema20_gap_1m_bps`) and the size of the 15-minute move in sigmas (`move_15m_in_sigmas`).",
+   "criteria": [
+    "Washed out: pinned at the bottom of its ranges after an outsized drop, RSI deeply oversold, far below its short average",
+    "Leaning oversold",
+    "Not stretched: mid-range, RSI middling, near its short average",
+    "Leaning overbought",
+    "Blown out: pinned at the top of its ranges after an outsized rise, RSI deeply overbought, far above its short average"
+   ]
+  }
+ },
+ "blocks_above": [
+  "anchor",
+  "claude"
+ ],
+ "above": {
+  "type": "score",
+  "instructions": "Which description best fits this state, for the question: will the price at the next full UTC hour, `minutes_to_expiry` minutes from now, be ABOVE the strike `strike_{S}`? The current price is `price`; the strike sits `strike_{S}_distance_bps` basis points from it and may be above or below it; a typical 1-sigma move over the time left is `expected_move_to_expiry_bps`. `baseline_p_above_{S}` is a measured probability of finishing above this strike that already accounts for distance, time left, hour-of-day volatility and fat tails; `claude_p_above_{S}` is an independent second opinion. Choose the level that matches where the strike sits and what those estimates say. Over an hour or less prices are close to a coin flip, so a recent rise or fall is not by itself a reason to shift.",
+  "criteria": [
+   "Strike far above the current price, more than a full expected move away: finishing above needs an unusually large rally in the time left, and the estimates put it well under one in five.",
+   "Strike above the price by roughly one expected move: finishing above needs a rally bigger than usual; the estimates put it near one in five.",
+   "Strike above the price by around half an expected move: finishing above needs a moderate rise, which happens but less often than not; the estimates put it near one in three.",
+   "Strike at or very close to the price, and a concrete sign points to finishing below: `baseline_p_above_{S}` and `claude_p_above_{S}` both clearly under one half, or the perp trading rich to its oracle (`premium_bps` clearly above zero).",
+   "Strike at or very close to the price with no concrete sign either way: a coin flip. This is the usual case for a strike at the price.",
+   "Strike at or very close to the price, and a concrete sign points to finishing above: `baseline_p_above_{S}` and `claude_p_above_{S}` both clearly over one half, or the perp trading cheap to its oracle (`premium_bps` clearly below zero).",
+   "Strike below the price by around half an expected move: price finishes above unless a moderate drop happens, which happens but less often than not; the estimates put it near two in three.",
+   "Strike below the price by roughly one expected move: only a drop bigger than usual would take price under it; the estimates put it near four in five.",
+   "Strike far below the current price, more than a full expected move away: only an unusually large drop would take price under it, and the estimates put it well over four in five."
+  ],
+  "level_values": [
+   0.08,
+   0.2,
+   0.32,
+   0.46,
+   0.5,
+   0.54,
+   0.68,
+   0.8,
+   0.92
+  ]
+ },
+ "extras_above": {
+  "vol_regime_now": {
+   "type": "score",
+   "instructions": "How lively has price been in the last hour compared with normal? Compare `realized_vol_last_1h_bps` with the normal hourly movement over the past day (`vol_per_hour_24h_bps`), keeping in mind how active this hour of day usually is (`hour_of_day_vol_factor`).",
+   "criteria": [
+    "Much calmer than normal: the last hour barely moved",
+    "Somewhat calmer than normal",
+    "About normal",
+    "Somewhat livelier than normal",
+    "Much livelier than normal: a burst of volatility in the last hour"
+   ]
+  },
+  "trend_into_hour": {
+   "type": "score",
+   "instructions": "What trend is price in right now? Use `return_15m_bps`, `return_1h_bps` and `return_4h_bps`.",
+   "criteria": [
+    "Steady decline: all three clearly falling",
+    "Leaning down: mostly falling, but mixed",
+    "No clear trend",
+    "Leaning up: mostly rising, but mixed",
+    "Steady rise: all three clearly rising"
+   ]
+  },
+  "perp_vs_oracle": {
+   "type": "score",
+   "instructions": "How is the perp priced against its oracle right now (`premium_bps`, with `funding_hr_bps` as the longer-running tilt), taken together with the latest hour's move (`return_1h_bps`)?",
+   "criteria": [
+    "Perp dumped below its oracle: price just fell and the perp trades clearly cheap to the oracle",
+    "Perp somewhat cheap to its oracle",
+    "Perp roughly in line with its oracle",
+    "Perp somewhat rich to its oracle",
+    "Perp ran above its oracle: price just rose and the perp trades clearly rich to the oracle"
+   ]
+  },
+  "fresh_move_size": {
+   "type": "score",
+   "instructions": "How big is the last 15 minutes' move (`return_15m_bps`) compared with the typical move expected over the time left to the hour (`expected_move_to_expiry_bps`)?",
+   "criteria": [
+    "A drop larger than the whole expected move",
+    "A drop of a sizeable fraction of the expected move",
+    "Small or no move",
+    "A rise of a sizeable fraction of the expected move",
+    "A rise larger than the whole expected move"
+   ]
+  },
+  "range_extreme_24h": {
+   "type": "score",
+   "instructions": "Where does price sit in its 24-hour range (`position_in_24h_range`), and is it pressing against an edge after this hour's move (`return_1h_bps`)?",
+   "criteria": [
+    "Pressing into fresh 24-hour lows after falling this hour",
+    "In the lower part of the range",
+    "Mid-range",
+    "In the upper part of the range",
+    "Pressing into fresh 24-hour highs after rising this hour"
+   ]
+  }
+ },
+ "notes": "WHY SCORE, NOT NOUL OR CHOICE: In the audit, choice up/down/neutral gave about 90% confidence on momentum. Choice decoding of P(up)/(P(up)+P(down)) also throws away the neutral mass, so the ratio can go to extremes. A noul p(yes) is unbounded too. With score and fixed level_values, the most a confident Jev can move direction is 0.44 to 0.56. If Jev is pure noise sitting on the extremes, the excess log loss vs 0.5 is about 0.005 nats. When Jev spreads probability across levels, the decoded expectation stays graded and non-saturated, which suits the stack.\n\nDIRECTION WORDING: The question asks which description of the evidence fits, not where the price will go. Jev's documented strength is classifying situations, and it is not a calculator. The middle level names the exact failure mode (\"the only argument is that price has recently been moving one way\") and says \"Most states look like this\", because each level is judged on its own. The outer levels need the anchor and Claude to agree AND a named market sign (premium vs oracle, or an outsized move whose 7-day continuation rate gives its likely outcome), so they should be rare. The continuation fields are backticked by their literal names, `continuation_rate_5m_7d` and `continuation_rate_15m_7d`, not as `continuation_rate_{H}m_7d`. That pattern is not in the listed horizon fields and might fail a pre-render validator.\n\nABOVE WORDING: One template has to cover strikes near 0.32, 0.5 and 0.68. So there are 9 non-uniform levels: structural levels at 0.08, 0.2, 0.32, 0.68, 0.8 and 0.92, and a tight band of 0.46, 0.5, 0.54 for a strike at the price (the primary mid strike). Each structural level states the distance in expected moves and the matching anchor band (\"near one in three\"). Jev is then mostly binning a number it can see, backed by two agreeing descriptions. The sign convention of `strike_{S}_distance_bps` is unknown, so the text reads above or below from `strike_{S}` vs `price`. `coin` and `hour_of_day_utc` are not listed for task K and are never referenced there.\n\nEXTRAS: All are present-tense and descriptive. Nine of the ten are signed scores ordered from the down side to the up side, so a linear stacker can use them for direction without interaction terms. They focus on things the linear baseline cannot form from raw features: move \u00d7 volume, move \u00d7 premium, spike vs grind, stretch at range extremes, and the 15m move as a fraction of the move expected to expiry. vol_regime_now is unsigned on purpose. It carries the vol-clustering signal (last-hour realised vol vs the 24h norm, which the baseline does not use) that matters for the low and high strikes if the stack is fit per strike. It does nothing for the mid strike.\n\nRISKS: (1) Direction may mostly re-encode the anchor's sign, which adds little beyond baseline_p_up in the stack. (2) Jev's numeric binning (anchor bands, distance in sigmas) may be fuzzy, so the low and high strikes can drift toward 0.5 and lose a little to the baseline there. The mid strike is protected by the tight centre band. (3) The signed extras are collinear with returns and with each other. (4) If the claude fields are missing or noisy, the outer direction levels lose their agreement test. (5) The premium-reverts framing assumes the usual perp-to-oracle convergence on Hyperliquid. If that is wrong out of sample, the cost is capped by the narrow level values. (6) The only braces anywhere are the {H} and {S} placeholders, so str.format rendering is safe."
+}

@@ -1,0 +1,93 @@
+{
+ "name": "present_stretch_reversion",
+ "theory": "Ask Jev only to classify what has already happened: how stretched the price is against its own volatility, and where a strike sits relative to that stretch and to how active the market is. Never ask it where the price will go. The mapping from those present-tense classes to probabilities lives in level_values. They are set tight around 0.5 and lean in the mean-reverting direction, which the design-period data supports, as does every coin's 7-day continuation rate (all below 0.5). Extras are few, signed and sign-stable, because the harness stacks are linear and every extra column costs out-of-sample log loss.",
+ "blocks_direction": [],
+ "direction": {
+  "type": "score",
+  "instructions": "Describe the present state of the price over the last {H} minutes: how far has it been pushed away from where it was trading, measured against this market's normal volatility? `return_{H}m_bps` is the move over the last {H} minutes; `neutral_band_{H}m_bps` is half of a typical {H}-minute move and `expected_move_{H}m_bps` is one typical {H}-minute move. Use `ema20_gap_1m_bps`, `rsi14_1m` and `up_bars_last_15` as supporting evidence. Classify what has already happened; do not predict.",
+  "criteria": [
+   "Stretched far upward: over the last {H} minutes the price rose by more than `expected_move_{H}m_bps` (`return_{H}m_bps` is positive and bigger than it), the price sits well above its 20-bar EMA (`ema20_gap_1m_bps` large and positive), `rsi14_1m` is above about 70 and most of the last 15 one-minute bars closed up (`up_bars_last_15` about 10 or more).",
+   "Stretched somewhat upward: over the last {H} minutes the price rose by more than `neutral_band_{H}m_bps` but not by more than `expected_move_{H}m_bps`; the price is above its 20-bar EMA and `rsi14_1m` is roughly 55 to 70.",
+   "Not stretched: `return_{H}m_bps` is within `neutral_band_{H}m_bps` of zero in either direction, the price is close to its 20-bar EMA, `rsi14_1m` is roughly 45 to 55 and up and down bars are mixed.",
+   "Stretched somewhat downward: over the last {H} minutes the price fell by more than `neutral_band_{H}m_bps` but not by more than `expected_move_{H}m_bps`; the price is below its 20-bar EMA and `rsi14_1m` is roughly 30 to 45.",
+   "Stretched far downward: over the last {H} minutes the price fell by more than `expected_move_{H}m_bps` (`return_{H}m_bps` is negative and bigger than it in size), the price sits well below its 20-bar EMA (`ema20_gap_1m_bps` large and negative), `rsi14_1m` is below about 30 and most of the last 15 one-minute bars closed down (`up_bars_last_15` about 5 or fewer)."
+  ],
+  "level_values": [
+   0.44,
+   0.47,
+   0.5,
+   0.53,
+   0.56
+  ]
+ },
+ "extras_direction": {
+  "extreme_stretch_up": {
+   "type": "noul",
+   "instructions": "Is the price stretched to an extreme on the upside right now, after an unusually sharp 15-minute rise?",
+   "criteria": {
+    "true": "`move_15m_in_sigmas` is above about 1.5, or above about 1 with `rsi14_1m` above about 72; most of the last 15 one-minute bars closed up and the price is far above its 20-bar EMA (`ema20_gap_1m_bps`).",
+    "false": "The last 15 minutes show an ordinary move, a small rise or a fall: `move_15m_in_sigmas` is below about 1, or `rsi14_1m` is not elevated."
+   }
+  },
+  "extreme_stretch_down": {
+   "type": "noul",
+   "instructions": "Is the price stretched to an extreme on the downside right now, after an unusually sharp 15-minute fall?",
+   "criteria": {
+    "true": "`move_15m_in_sigmas` is below about -1.5, or below about -1 with `rsi14_1m` below about 28; most of the last 15 one-minute bars closed down and the price is far below its 20-bar EMA (`ema20_gap_1m_bps`).",
+    "false": "The last 15 minutes show an ordinary move, a small fall or a rise: `move_15m_in_sigmas` is above about -1, or `rsi14_1m` is not depressed."
+   }
+  }
+ },
+ "blocks_above": [],
+ "above": {
+  "type": "score",
+  "instructions": "Classify the situation of `strike_{S}` right now. `strike_{S}_distance_bps` is how far the strike is from the current `price` in bps (positive = above the price, 0 = at the price, negative = below the price). `expected_move_to_expiry_bps` is a typical one-hour move. Judge the recent path from `return_1h_bps`, `return_4h_bps` and `position_in_24h_range`, and how active the market is from `hour_of_day_vol_factor` and `realized_vol_last_1h_bps`. Describe the present; do not predict.",
+  "criteria": [
+   "The strike is above the price (`strike_{S}_distance_bps` positive) and the price is already stretched up or the market is quiet: the price has risen over the last 1 to 4 hours and sits in the upper part of its 24-hour range (`position_in_24h_range` above about 0.7), or `hour_of_day_vol_factor` is below about 0.9 with `realized_vol_last_1h_bps` below `expected_move_to_expiry_bps` and the price has not just sold off.",
+   "The strike is above the price (`strike_{S}_distance_bps` positive); the price is neither stretched up nor down over the last hours (`return_1h_bps` and `return_4h_bps` small next to `expected_move_to_expiry_bps`, middle of its 24-hour range) and activity is ordinary.",
+   "The strike is above the price (`strike_{S}_distance_bps` positive) and the price is depressed or the market is busy: the price has fallen over the last 1 to 4 hours and sits in the lower part of its 24-hour range (`position_in_24h_range` below about 0.3), or `hour_of_day_vol_factor` is above about 1.1 or `realized_vol_last_1h_bps` is well above `expected_move_to_expiry_bps`, and the price has not just rallied.",
+   "The strike is at the current price (`strike_{S}_distance_bps` is 0) and the price is stretched up: it has risen over the last 1 to 4 hours (for example `return_1h_bps` above about half of `expected_move_to_expiry_bps`) and sits in the upper part of its 24-hour range.",
+   "The strike is at the current price (`strike_{S}_distance_bps` is 0) and the price is not stretched either way: the 1-hour and 4-hour returns are small next to `expected_move_to_expiry_bps` or point in opposite directions, and the price is in the middle of its 24-hour range.",
+   "The strike is at the current price (`strike_{S}_distance_bps` is 0) and the price is stretched down: it has fallen over the last 1 to 4 hours (for example `return_1h_bps` below minus half of `expected_move_to_expiry_bps`) and sits in the lower part of its 24-hour range.",
+   "The strike is below the price (`strike_{S}_distance_bps` negative) and the price is stretched up or the market is busy: the price has risen over the last 1 to 4 hours and sits in the upper part of its 24-hour range (`position_in_24h_range` above about 0.7), or `hour_of_day_vol_factor` is above about 1.1 or `realized_vol_last_1h_bps` is well above `expected_move_to_expiry_bps`, and the price has not just sold off.",
+   "The strike is below the price (`strike_{S}_distance_bps` negative); the price is neither stretched up nor down over the last hours (`return_1h_bps` and `return_4h_bps` small next to `expected_move_to_expiry_bps`, middle of its 24-hour range) and activity is ordinary.",
+   "The strike is below the price (`strike_{S}_distance_bps` negative) and the price is already depressed or the market is quiet: the price has fallen over the last 1 to 4 hours and sits in the lower part of its 24-hour range (`position_in_24h_range` below about 0.3), or `hour_of_day_vol_factor` is below about 0.9 with `realized_vol_last_1h_bps` below `expected_move_to_expiry_bps` and the price has not just rallied."
+  ],
+  "level_values": [
+   0.21,
+   0.28,
+   0.36,
+   0.46,
+   0.5,
+   0.54,
+   0.64,
+   0.72,
+   0.79
+  ]
+ },
+ "extras_above": {
+  "stretch_last_hours": {
+   "type": "score",
+   "instructions": "Over the last 1 to 4 hours, how far has the price been pushed up or down compared with a typical one-hour move (`expected_move_to_expiry_bps`)? Use `return_1h_bps` and `return_4h_bps`.",
+   "criteria": [
+    "Sharp decline: `return_1h_bps` is below minus one `expected_move_to_expiry_bps`, or `return_4h_bps` is below about minus two of them.",
+    "Moderate decline: the price is down over the last 1 to 4 hours by roughly half to one typical one-hour move.",
+    "Flat or mixed: the 1-hour and 4-hour returns are small next to `expected_move_to_expiry_bps` or point in opposite directions.",
+    "Moderate rise: the price is up over the last 1 to 4 hours by roughly half to one typical one-hour move.",
+    "Sharp rise: `return_1h_bps` is above one `expected_move_to_expiry_bps`, or `return_4h_bps` is above about two of them."
+   ]
+  },
+  "location_in_day_range": {
+   "type": "score",
+   "instructions": "Where is the price right now within its 24-hour range, and how did it get there? Use `position_in_24h_range` and `return_24h_bps`.",
+   "criteria": [
+    "Pinned at the 24-hour low after a decline: `position_in_24h_range` below about 0.1 and `return_24h_bps` negative.",
+    "In the lower part of the 24-hour range: `position_in_24h_range` about 0.1 to 0.35.",
+    "In the middle of the 24-hour range: `position_in_24h_range` about 0.35 to 0.65.",
+    "In the upper part of the 24-hour range: `position_in_24h_range` about 0.65 to 0.9.",
+    "Pressed against the 24-hour high after a rise: `position_in_24h_range` above about 0.9 and `return_24h_bps` positive."
+   ]
+  }
+ },
+ "notes": "I checked this variant with the harness's own render(), from helix/lab.py. Both tasks pass with no unknown fields; variant hashes are D a960e605 and K c3299622. A copy of the spec is in the scratchpad as variant.json; I did not write anything into data/lab/variants. I made no Jev or Claude calls. All the numbers below come from the DESIGN period only (the first 60% of states_D.json and states_K.json); I never touched the held-out 40%.\n\nWHY A SCORE QUESTION WITH TIGHT VALUES. With noul and choice, Jev sets the size of the probability itself, and the audit showed that ends up repeating momentum at about 90%. A score question puts the probability in level_values. The direction question only asks Jev to classify the present stretch (move over H minutes against expected_move_H, supported by EMA gap, RSI and up-bars). The decoded p can only fall between 0.44 and 0.56, so if the signal fails the damage is capped at about 0.003 nats. The stacks see logit(p), so this tightness does not stop them rescaling it.\n\nTHE VALUES ARE NOT GUESSES:\n- Every stretch measure I tried (return_H/expected_move_H, EMA gap in sigma units, RSI, up_bars, move_15m_in_sigmas) is negatively related to the forward return, on all six coins and in both halves of the design period. Rank correlations run from -0.07 to -0.13. Every coin's 7-day continuation rate is below 0.5 (0.46 to 0.495).\n- Up-rates by stretch bucket at 5 minutes, from stretched up to stretched down: 0.45 / 0.47 / 0.52 / 0.54 / 0.60. At 15 minutes: 0.44 / 0.43 / 0.52 / 0.58 / 0.58.\n- Binned into these 5 levels with these values, the gain over 0.5 is +0.003 at 5 minutes and +0.005 at 15 minutes, positive in both halves.\n- The quant logit (24 features, l2=2) overfits badly. Fitted on the first 60% of the design period and tested on the rest, it scored 0.736 / 0.725 against 0.693 for a flat 0.5. The direct answer should therefore beat quant easily and has a real chance of beating 0.5.\n\nTASK K. The empirical baseline is biased at the mid strike: it averaged 0.52 while the hit rate was 0.49, and it lost 0.0036 to a flat 0.5. The at-the-money levels are therefore centred on 0.50 and only tilt for hour-scale stretch (built from the 1-hour return, the 4-hour return and position in the 24-hour range). Up-rates were 0.58 when the price was stretched down and 0.43 to 0.45 when stretched up. For the low and high strikes, the side of the strike is decided by the sign of strike_S_distance_bps, which is unambiguous. Within each side Jev judges how reachable the strike is (stretch plus a quiet or busy reading). Simulated with this exact 9-level scheme on the design period, the gain against the baseline is:\n- mid: +0.007 (+0.009 and +0.005 by half)\n- high: +0.020\n- low: -0.001\n\nBLOCKS ARE ALL OFF ON PURPOSE:\n- The Claude block makes jev_state() return None whenever a Claude forecast is missing, which silently drops states.\n- The anchor is only sign(return_H) x (continuation rate - 0.5). The stretch levels already carry that information, and the extra field would distract Jev.\n- On K, the anchor shows the drifting mid baseline, which would invite Jev to copy its bias.\n\nEXTRAS. The stacks are linear, and on K the stack pools all three strikes. That means unsigned diagnoses (compression, vol regime, exhaustion strength) cannot predict direction, so I kept only signed ones. I tested the candidates out of sample inside the design period:\n- Dropped as harmful: multi-timeframe alignment, compression, the 1-minute bounce, and day-range stretch on D. Day-range stretch flips sign between the halves.\n- Dropped as harmful: premium/funding crowding on D and K. Its sign flips, and on K it cost -0.006 at the mid strike.\n- Kept: two one-sided extreme-stretch nouls on D, which were roughly neutral to slightly positive. Fully stretched states revert hardest: up-rate 0.35 to 0.49 after an extreme rise, 0.55 to 0.70 after an extreme fall.\n- Kept: two signed hour-scale and day-range scores on K. Adding them raised the stack's mid gain from +0.004 to +0.009, and the K stack has no raw features apart from these.\nI deliberately left extra slots unused.\n\nRISKS:\n- The direction mapping is hard-coded as mean reversion. If the held-out 1.3 days turn to momentum, the direct answer loses up to about 0.003 nats, though the stack can flip the sign.\n- Jev has to compare return_H against expected_move_H (a magnitude comparison). The docs flag numeric proximity as a weakness. Mixed cues will spread probability across adjacent levels, which only shrinks p toward the middle and is safe.\n- Each K level combines side, stretch and activity. If Jev confuses the sub-levels, the result degrades towards one flat value per side (about 0.28 and 0.72), which lost about 0.012 to the baseline on the low strike in the design period.\n- The D design period is only about 2 days and 1,700 states, so all of these estimates are noisy at about \u00b10.002.\n- The harness ranks variants by in-sample design log loss of the quant+jev stack, which rewards more columns. This variant is built for held-out performance instead, so it may rank lower on that list than its held-out result deserves."
+}

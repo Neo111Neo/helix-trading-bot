@@ -1,0 +1,62 @@
+{
+ "name": "positioning_premium_nudge",
+ "theory": "Positioning and premium pressure. When the perp trades rich to its oracle (or funding rises above its resting 0.125 bps/h), longs are crowded and the perp tends to drift back toward the oracle. When it trades cheap, the same holds for shorts. That pressure matters most when price is already stretched to an edge of its 24h range, because 5-60 minute moves in these coins have tended to partly reverse. The har baseline uses only volatility and distance, so it ignores both effects. Jev is a classifier, not a forecaster, so it only sorts the present state into a lean-below, neutral or lean-above bucket, using named, observable thresholds on premium_bps, funding_hr_bps and position_in_24h_range. The code then moves har_p_above_{S} by a small fixed log-odds shift. Neutral is the default and covers most states. The strike's own position is explicitly ruled out as evidence, so Jev cannot re-encode the baseline, and the answer should be the same for every strike of a coin at a given moment.",
+ "blocks_above": [
+  "har"
+ ],
+ "above": {
+  "type": "score",
+  "instructions": "Which description best fits this state? The question behind it: will the price, `minutes_to_expiry` minutes from now, finish ABOVE the strike `strike_{S}` (current price `price`)? You are NOT estimating that probability, because it is already estimated. `har_p_above_{S}` is a measured baseline that already accounts for how far away the strike is (`strike_{S}_distance_sigmas` expected moves, positive when the strike is above the price), the time left, recent volatility and fat tails. Your only job is to say whether perp positioning, taken together with where the price sits in its 24-hour range, gives a reason to lean slightly below or slightly above what that baseline already says. Where the strike sits is NOT evidence either way: a strike far above or far below the price is already priced into the baseline, and for the same coin at the same moment every strike should get the same answer. How to read the signs: `premium_bps` is the perp's gap to its oracle. Between about -4 and +1 is ordinary, because most coins trade a few bps cheap. Above about +1 the perp is rich (longs paying up), and below about -4.5 it is cheap (shorts pressing). `funding_hr_bps` almost always rests at 0.125. Above that, longs are crowded; below it, and especially below zero, shorts are crowded. A rich, crowded perp tends to drift back down toward its oracle, and a cheap one drifts back up. `position_in_24h_range` is 0 at the day's low and 1 at the day's high. Over these horizons, moves stretched to a range edge have tended to partly reverse rather than continue. A recent rise or fall (`return_15m_bps`, `return_1h_bps`) is not on its own a reason to lean in the same direction. If the strike is more than 2 expected moves from the price (`strike_{S}_distance_sigmas` above 2 or below -2), choose the middle level: the outcome is nearly settled and the baseline handles it.",
+  "criteria": [
+   "Lean below the baseline, clear case: crowded longs at a stretched high. The perp trades rich (`premium_bps` above about +1, or `funding_hr_bps` above 0.125) AND the price sits in the top fifth of its 24-hour range (`position_in_24h_range` above 0.8). Both signs point to a pullback. Rare.",
+   "Lean below the baseline, slight: one sign only, with nothing pointing the other way. Either the price is pressed into the very top of its 24-hour range (`position_in_24h_range` above 0.9) while the perp is not cheap, or the perp is clearly rich (`premium_bps` above about +2.5) while the price is in the upper half of its range.",
+   "No reason to deviate from `har_p_above_{S}`. Premium and funding are in their ordinary ranges and the price is away from the edges of its 24-hour range; or the signs conflict (for example a rich perp near the day's low, or a cheap perp near the day's high); or the only thing to point at is a recent move; or the strike is more than 2 expected moves away. Most states look like this.",
+   "Lean above the baseline, slight: one sign only, with nothing pointing the other way. Either the price is pressed into the very bottom of its 24-hour range (`position_in_24h_range` below 0.1) while the perp is not rich, or the perp is clearly cheap (`premium_bps` below about -5.5, or `funding_hr_bps` below zero) while the price is in the lower half of its range.",
+   "Lean above the baseline, clear case: crowded shorts at a stretched low. The perp trades cheap (`premium_bps` below about -4.5, or `funding_hr_bps` below zero) AND the price sits in the bottom fifth of its 24-hour range (`position_in_24h_range` below 0.2). Both signs point to a bounce. Rare."
+  ],
+  "level_shifts": [
+   -0.25,
+   -0.1,
+   0,
+   0.1,
+   0.25
+  ],
+  "anchor": "har_p_above_{S}"
+ },
+ "extras_above": {
+  "perp_crowding": {
+   "type": "score",
+   "instructions": "How crowded is positioning in the perp right now? Use `premium_bps` (the perp's gap to its oracle; between about -4 and +1 is ordinary, since most coins trade a few bps cheap) and `funding_hr_bps` (0.125 is the usual resting rate).",
+   "criteria": [
+    "Shorts crowded: the perp is clearly cheap (`premium_bps` below about -5) or funding is below zero",
+    "Leaning short: the perp is somewhat cheaper than ordinary, or funding is a little below 0.125",
+    "Ordinary: premium is in its usual band and funding sits at 0.125",
+    "Leaning long: the perp is somewhat rich (`premium_bps` roughly +1 to +2)",
+    "Longs crowded: the perp is clearly rich (`premium_bps` above about +2) or funding is above 0.125"
+   ]
+  },
+  "range_edge_push": {
+   "type": "score",
+   "instructions": "Where does the price sit in its 24-hour range (`position_in_24h_range`, 0 = the day's low, 1 = the day's high), and is it pressing against an edge after the last hour's move (`return_1h_bps`)?",
+   "criteria": [
+    "Pressing into fresh 24-hour lows after falling this hour",
+    "In the lower fifth of the range, not actively pressing the low",
+    "Mid-range",
+    "In the upper fifth of the range, not actively pressing the high",
+    "Pressing into fresh 24-hour highs after rising this hour"
+   ]
+  },
+  "fresh_move_size": {
+   "type": "score",
+   "instructions": "How big is the last 15 minutes' move (`return_15m_bps`) compared with the typical move expected over the time left (`expected_move_to_expiry_bps`)?",
+   "criteria": [
+    "A drop larger than the whole expected move",
+    "A drop of a sizeable fraction of the expected move",
+    "Small or no move",
+    "A rise of a sizeable fraction of the expected move",
+    "A rise larger than the whole expected move"
+   ]
+  }
+ },
+ "notes": "DOCS (docs.typesafe.ai/api): a score question returns a probability for each level, plus a probability-weighted score and a concentration-based confidence. Questions are answered independently. lab.decode turns a nudge into sigmoid(logit(anchor) + sum P(level) x level_shift), so a spread-out answer gives a smaller shift.\n\nDESIGN-PERIOD EVIDENCE (only the first 60% of data/lab/full states_K15.json and states_K.json was used; I did not look at the holdout). I built a rule-based stand-in that applies these exact thresholds and checked it against har.\n- Level counts, K15: 74/120/2388/141/113. K (1h): 18/31/596/36/27. The middle covers about 84%.\n- Mean residual y - har at the mid strike, by level. K15: -0.075, -0.151, -0.009, +0.112, +0.034. K: -0.138, -0.074, -0.031, +0.039, +0.186. The signs are right at every outer level.\n- Log loss gain over har, all strikes, with shifts \u00b10.25/\u00b10.1 in this range: about +0.0007 nats (K15) and +0.002 to +0.003 (K). Shifts of \u00b10.2/\u00b10.08 keep about 90% of that gain.\n- Strongest single feature: position_in_24h_range. Mid-strike residual is -0.144 when position > 0.9 and +0.109 when position < 0.1 (K15). This matches the partial-reversal finding.\n- Premium alone is weaker but signed as expected. Residual is -0.04 to -0.09 when premium is +2 to +5 bps, and +0.08 when premium is -10 to -5 bps (K15 only; mixed in K).\nAll of this rests on about 8 design days with 4 coins that move together, so the effective sample is small. Treat it as a direction check, not a size estimate.\n\nTHRESHOLD CHOICES:\n- premium_bps baselines differ a lot by coin. Medians: BTC -3.5, SOL -2.35, HYPE -2.3, ETH +0.1. So 'ordinary' is defined as a wide band (-4 to +1) and the outer levels need range position to agree.\n- funding_hr_bps sits at exactly 0.125 in 78% of states. On Hyperliquid it only leaves that floor when the hourly premium goes past about -4 or +6 bps. It is therefore a slower confirmation of premium, and 'above 0.125' and 'below zero' are the meaningful cut-offs.\n- Shifts are capped at \u00b10.25 log-odds (50% -> about 56%). If Jev's choice of level were pure noise, the cost would be about p(1-p)\u00b7\u03b4\u00b2/2 per state: about 0.008 nats at \u00b10.25, but only on states Jev pushes to the edges. Keeping 'Most states look like this' on the middle level and making the outer levels rare limits that cost.\n\nGUARDS AGAINST KNOWN JEV FAILURES:\n1. Strike re-encoding. The instructions say the strike's position is not evidence and that every strike of a coin should get the same answer. Strikes more than 2 expected moves away are forced to the middle, which removes the far-strike failure (Jev's 60% vs a true 99%).\n2. Momentum restating. The text says outright that a stretched high with crowded longs leans BELOW, and that a recent move on its own is not a reason. Jev's raw tendency would read a top-of-range rally as bullish, so whether it complies is the main thing to measure.\n3. No probability is asked for. Jev only picks the description that fits.\n\nRISKS:\n(a) In the lab, premium and funding come from hourly fundingHistory records. Live HIP-4 uses the instantaneous ctx premium, which is noisier, so live premium may cross thresholds more often.\n(b) The 2-week window was mostly a falling market (position median 0.40), so the reversal effect may be regime-specific.\n(c) Perp-to-oracle convergence can come from the oracle moving rather than the perp. If it does, the premium leg adds nothing, and the narrow shifts cap the damage.\n(d) Jev may spread probability across levels, which shrinks the effective shift toward zero. That is safe but may hide a small edge.\n\nEXTRAS: three signed, present-tense scores ordered from the down side to the up side (perp crowding, pressure at a range edge, size of the fresh 15m move against the expected move), so a linear stacker can weight them without interaction terms. There are no placeholders, and every backticked field is in the always-present state.\n\nFORMAT CHECKS: the only braces anywhere are {S}. Every backticked field exists (price, minutes_to_expiry, strike_{S}, har_p_above_{S}, strike_{S}_distance_sigmas, premium_bps, funding_hr_bps, position_in_24h_range, return_15m_bps, return_1h_bps, expected_move_to_expiry_bps). The level shifts are monotonic and the middle one is 0. Analysis scripts are in the session scratchpad (prem_check.py, rule_check.py)."
+}
