@@ -1,0 +1,26 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_*
+*api*.txt
+*key*.txt
+
+# runtime data, logs, trading records
+data/
+*.db
+*.db-*
+*.log
+*.jsonl
+research_agent/
+deploy/
+config.backup*
+*.diff
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

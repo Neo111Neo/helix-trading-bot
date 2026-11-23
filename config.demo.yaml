@@ -1,0 +1,14 @@
+# Settings for demo.bat / `run.py --demo`: simulated market, mock Jev answers, the perp paper engine on so the terminal
+# shows every stage working. Nothing here is real and no result says anything about live trading.
+mode: paper
+venue: hyperliquid
+perp_trading: true
+network: mainnet
+market:
+  coins: [BTC, ETH, SOL]
+  decision_interval_ms: 1000
+  horizon_s: 60
+server:
+  host: 127.0.0.1
+  port: 8787
+  open_browser: true

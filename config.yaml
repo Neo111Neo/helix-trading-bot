@@ -1,0 +1,266 @@
+# HELIX config. Every threshold the bot uses lives here. Change a number, restart the bot.
+# Defaults are PAPER trading. hip4_live.live_enabled: true makes helix/hip4_exec.py send REAL orders (read LIVE_PILOT.md).
+# What each setting means: helix/config.py.
+
+mode: paper
+venue: hyperliquid
+perp_trading: false
+hip4_tape:
+  enabled: true
+  coins:
+  - all
+  keep_days: 30
+hip4_sniper:
+  enabled: true
+  coins:
+  - all
+  snipe_edge: 0.05
+  max_tte_min: 1440
+  stop_min: 3
+  snipe_latency_ms: 300
+  snipe_cooldown_s: 5
+  quote_size: 20
+  max_position: 100
+  max_risk_usd: 1000
+  min_p: 0.03
+  min_notional: 10
+  price_band:
+  - 0.0
+  - 1.0
+  sides: sell
+  holdout_from: 1791402673
+  start_cash: 10000
+  kill_drawdown: 0.08
+hip4_live:
+  shadow: true
+  repost_threshold: 0.01
+  min_notional: 10
+  tick: 0.001
+  address_budget: 10000
+  gate:
+    days: 2
+    settled: 200
+    markout_n: 200
+    backtest_hours: 24
+    shadow_validity: 0.9
+  live_enabled: false
+  require_gate: true
+  pilot:
+    capital_usd: 150
+    max_order_usd: 25
+    max_open_usd: 100
+    daily_loss_usd: 60
+    max_market_usd: 30
+    long_tte_min: 120
+    long_budget_usd: 40
+    compound:
+      enabled: false
+    contracts: 0
+    cooldown_s: 15
+    fire_on: signal
+    slip: 0.01
+    min_edge: 0.03
+hip4_backtest:
+  auto_every_h: 4
+network: mainnet
+market:
+  coins:
+  - BTC
+  - ETH
+  - HYPE
+  - ZEC
+  - SOL
+  - NEAR
+  - PUMP
+  - XRP
+  - UNI
+  - DOGE
+  - SUI
+  - WLD
+  - ADA
+  - TAO
+  - kPEPE
+  - ONDO
+  - AVAX
+  - LINK
+  - BNB
+  - FARTCOIN
+  decision_interval_ms: 15000
+  monitor_interval_ms: 200
+  horizon_s: 900
+  book_refresh_s: 8.0
+paper:
+  starting_cash: 10000
+  taker_fee_bps: 4.5
+  maker_fee_bps: 1.5
+  extra_slippage_bps: 0.5
+  entry_mode: maker
+  entry_ttl_s: 60
+  exit_mode: maker
+  exit_window_s: 120
+jev:
+  model: jev-1.13.0
+  deadline_ms: 800
+  fallback: hold
+  daily_budget_usd: 10
+  price_per_million_input: 0.042
+  circuit_errors: 5
+  circuit_cooldown_s: 30
+policy:
+  min_direction_prob: 0.55
+  full_size_prob: 0.68
+  min_setup_prob: 0.45
+  min_edge_bps: 10
+  max_liquidity_stress: 0.7
+  toxic_flow_threshold: 0.6
+  max_crisis_prob: 0.5
+  exit_direction_prob: 0.6
+  exit_inventory_pressure: 2.4
+  min_hold_s: 150
+  confirm_ticks: 2
+rules:
+  momentum_bps: 3.0
+  min_imbalance: 0.15
+  min_flow: 0.6
+  min_hold_s: 150
+risk:
+  risk_per_trade: 0.002
+  stop_sigma: 3.0
+  target_sigma: 2.5
+  min_stop_bps: 6
+  min_target_bps: 10
+  max_hold_s: 900
+  max_position_leverage: 1.5
+  max_total_leverage: 3.0
+  max_open_positions: 6
+  max_entries_per_min: 12
+  max_daily_loss_pct: 0.02
+  max_drawdown_pct: 0.08
+  max_data_age_ms: 6000
+  max_decision_latency_ms: 800
+  max_consecutive_errors: 10
+  max_spread_bps: 5
+  max_slippage_bps: 3
+  min_edge_multiple: 3.0
+  cooldown_s: 30
+  reentry_cooldown_s: 120
+  min_order_usd: 10
+  allow_short: true
+  flatten_on_kill: true
+  bet_multiplier: 1.0
+  max_bet_multiplier: 5.0
+  leverage_ceiling_position: 5.0
+  leverage_ceiling_total: 10.0
+  streak:
+    enabled: false
+    after_wins: 2
+    step: 0.5
+    max: 3.0
+    gate_trades: 30
+journal:
+  retain_hours: 72
+server:
+  host: 127.0.0.1
+  port: 8787
+  open_browser: true
+  refresh_ms: 1000
+analyst:
+  model: claude-opus-5-5
+  max_tokens: 2000
+hourly_test:
+  enabled: true
+  coins:
+  - BTC
+  - ETH
+  - HYPE
+  - ZEC
+  - SOL
+  - NEAR
+  - PUMP
+  - XRP
+  - UNI
+  - DOGE
+  - SUI
+  - WLD
+  - ADA
+  - TAO
+  - kPEPE
+  - ONDO
+  - AVAX
+  - LINK
+  - BNB
+  - FARTCOIN
+  jev_variants:
+    jev_v2: helix/prompts/present_stretch_reversion.json
+    jev_v3: helix/prompts/calibrated_anchor_bounded_score.json
+    jev_v4: helix/prompts/positioning_premium_nudge.json
+hip4:
+  enabled: true
+  coins:
+  - BTC
+  - ETH
+  - SOL
+  - HYPE
+  claude: true
+  edge: 0.03
+  variants:
+  - jev_v3
+  - jev_v4
+hip4_mm:
+  enabled: true
+  coins:
+  - all
+  edge: 0.02
+  skew: 0.05
+  quoting: false
+  requote_threshold: 0.02
+  max_markets: 0
+  min_notional: 10
+  guard_move: 0.05
+  guard_s: 60
+  quote_size: 20
+  max_position: 100
+  max_risk_usd: 1000
+  min_p: 0.05
+  stop_min: 3
+  max_tte_min: 1440
+  quote_every_s: 0.5
+  levels: 2
+  level2_edge_mult: 2.0
+  fast_model: true
+  zs_refresh_s: 900
+  exits:
+    enabled: true
+    take_profit: 0.15
+    stop_loss: 0.3
+    min_hold_s: 15
+    cooldown_s: 60
+    taker_fee: 0.001
+  fee: 0.0005
+  start_cash: 10000
+  kill_drawdown: 0.08
+  market_weight: 0.5
+  blend_max_spread: 0.1
+signal:
+  enabled: true
+  prompt: helix/prompts/present_stretch_reversion.json
+  horizon_min: 15
+  entry_prob: 0.555
+  max_age_s: 150
+  max_continuation: 0.5
+lab_schedule:
+  enabled: true
+  every_days: 7
+  variant: present_stretch_reversion
+  workers: 2
+claude_forecast:
+  enabled: true
+  model: claude-opus-5-5
+  interval_s: 900
+  effort: low
+  daily_budget_usd: 5
+  price_in_per_million: 4.0
+  price_out_per_million: 20.0
+research_desk:
+  enabled: false
+  every_min: 60
