@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HELIX trading bot for Hyperliquid</title>
+<meta name="description" content="Open trading terminal and research bot for Hyperliquid: live order books, AI-scored decisions, hard risk checks and a full paper-trading engine.">
+<meta property="og:title" content="HELIX trading bot for Hyperliquid">
+<meta property="og:description" content="Watch every decision a trading bot makes, and why. Paper trading by default.">
+<meta property="og:image" content="https://neo111neo.github.io/helix-trading-bot/img/terminal.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* layout: wide left-aligned column; the terminal screenshot is the hero, text stays quiet around it */
+:root { --bg:#05070b; --panel:#0c1118; --line:#1b2430; --fg:#e8edf4; --dim:#8d9aab; --amber:#ffb02e; --blue:#3d9bff; --up:#22d38a; --down:#ff4d5a;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow",sans-serif; --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",Consolas,monospace; color-scheme:dark; }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 var(--sans) }
+.wrap { max-width:1240px; margin:0 auto; padding:0 max(20px,env(safe-area-inset-right)) 72px max(20px,env(safe-area-inset-left)) }
+.notice { border-bottom:1px solid var(--line); background:repeating-linear-gradient(135deg,#1a1404 0 14px,#120e03 14px 28px); color:#e9c987; font:500 14px/1.5 var(--mono); padding:9px 20px; text-align:center }
+header { display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center; padding:22px 0 }
+.brand { font:700 22px var(--cond); letter-spacing:.2em }
+nav { display:flex; flex-wrap:wrap; gap:20px; font:15px var(--mono) }
+a { color:var(--blue); text-underline-offset:4px }
+a:focus-visible { outline:2px solid var(--amber); outline-offset:3px }
+h1 { font:700 clamp(38px,6vw,76px)/1.02 var(--cond); max-width:17ch; margin:36px 0 18px; text-wrap:balance }
+.lede { max-width:62ch; color:#c3cddb; font-size:19px; margin:0 0 28px }
+.row { display:flex; flex-wrap:wrap; gap:12px }
+.btn { display:inline-block; padding:13px 22px; border:1px solid var(--line); background:var(--panel); color:var(--fg); text-decoration:none; font:500 15px var(--mono) }
+.btn.go { background:var(--amber); border-color:var(--amber); color:#140d00 }
+.btn:hover { border-color:var(--fg) }
+figure { margin:44px 0 0 }
+figure a { display:block; border:1px solid var(--line); box-shadow:0 30px 120px rgba(61,155,255,.16) }
+img { display:block; width:100%; height:auto }
+figcaption { color:var(--dim); font:13px/1.6 var(--mono); padding-top:10px }
+h2 { font:700 clamp(27px,3.4vw,40px)/1.1 var(--cond); margin:80px 0 22px; text-wrap:balance }
+.flow { display:grid; grid-template-columns:repeat(auto-fit,minmax(205px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); list-style:none; padding:0; margin:0 }
+.flow li { background:var(--panel); padding:20px; min-width:0 }
+.flow b { display:block; color:var(--amber); font:500 15px var(--mono); margin-bottom:8px }
+.two { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:32px 48px }
+.two h3 { font:600 21px var(--cond); margin:0 0 6px }
+.two p { margin:0; color:#b8c3d2; max-width:58ch }
+pre { background:var(--panel); border:1px solid var(--line); padding:20px; overflow-x:auto; font:15px/1.7 var(--mono); margin:0 }
+.risk { color:var(--dim); font-size:15px; max-width:78ch; border-top:1px solid var(--line); margin-top:80px; padding-top:24px }
+</style>
+</head>
+<body>
+<div class="notice">Every picture and the demo on this site use a simulated market. No real trades or results are shown.</div>
+<div class="wrap">
+<header><div class="brand">HELIX</div><nav><a href="demo.html">Demo</a><a href="https://github.com/Neo111Neo/helix-trading-bot">Source</a><a href="https://github.com/Neo111Neo/helix-trading-bot/releases/latest">Download</a></nav></header>
+<h1>See every decision your trading bot makes.</h1>
+<p class="lede">HELIX is a trading bot and research terminal for Hyperliquid. It reads live order books, weighs each market, and shows exactly why it traded or why it stayed out. It runs on paper until you decide otherwise.</p>
+<div class="row"><a class="btn go" href="demo.html">Open the demo</a><a class="btn" href="https://github.com/Neo111Neo/helix-trading-bot/archive/refs/heads/main.zip">Download the code</a><a class="btn" href="https://github.com/Neo111Neo/helix-trading-bot">View on GitHub</a></div>
+<figure><a href="demo.html"><img src="img/terminal.png" width="1920" height="1080" alt="HELIX terminal showing three simulated markets with price charts, order books and Jev answers"></a><figcaption>The HELIX terminal running in demo mode on a simulated market.</figcaption></figure>
+
+<h2>From order book to order, in the open</h2>
+<ol class="flow">
+<li><b>Read</b>Order books, trades and funding stream in over WebSocket, with a REST backup.</li>
+<li><b>Ask</b>Jev answers typed questions about regime, direction and flow. Late answers are ignored.</li>
+<li><b>Decide</b>Plain code turns the answers into an action, using thresholds in one config file.</li>
+<li><b>Check</b>Hard risk limits on every perp order. The AI cannot override them.</li>
+<li><b>Score</b>Every call is graded against a simple rules baseline paying the same fees.</li>
+</ol>
+
+<h2>What you get</h2>
+<div class="two">
+<div><h3>HIP-4 outcome markets</h3><p>A volatility model prices contracts such as "BTC above K at 19:00" and takes quotes that sit far enough from fair value.</p></div>
+<div><h3>A baseline that keeps it honest</h3><p>A second paper book trades simple rules on the same data, so you can see whether the AI adds anything at all.</p></div>
+<div><h3>Tape recorder and backtests</h3><p>Record every book and trade, then replay strategies at realistic latencies, with a lab for testing variants at zero risk.</p></div>
+<div><h3>Safety you can read</h3><p>Kill switch, loss limits, and a go-live gate. Live trading is off by default and needs your own agent wallet, which cannot withdraw.</p></div>
+</div>
+
+<h2>Watch the bot think in 3D</h2>
+<figure style="margin-top:0"><a href="img/cortex.png"><img src="img/cortex.png" width="1920" height="1080" alt="HELIX Cortex 3D view of three simulated markets" loading="lazy"></a><figcaption>HELIX Cortex, captured in demo mode. Simulated market and mock answers.</figcaption></figure>
+
+<h2>The whole terminal</h2>
+<figure style="margin-top:0"><a href="img/terminal-full.png"><img src="img/terminal-full.png" alt="Full HELIX terminal: decision stream, equity against baseline, trade funnel, latency, calibration and risk checks" loading="lazy"></a><figcaption>Decision stream, equity against the baseline, trade funnel, calibration, risk engine and blotter. Simulated data.</figcaption></figure>
+
+<h2>Run it in three lines</h2>
+<pre>git clone https://github.com/Neo111Neo/helix-trading-bot
+cd helix-trading-bot &amp;&amp; python -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
+.venv/bin/python run.py --demo --config config.demo.yaml</pre>
+<p style="color:var(--dim)">On Windows, run <code>setup.bat</code>, then <code>demo.bat</code>.</p>
+
+<p class="risk">Experimental software, not financial advice. No profitability is claimed: the perpetuals strategies tested here lost money after costs, and paper results overstate live ones. The optional live pilot can lose real money. Check that these markets are legal where you live. HELIX is not affiliated with Hyperliquid, TypeSafe AI or Anthropic.</p>
+</div>
+</body>
+</html>
